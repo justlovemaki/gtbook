@@ -103,7 +103,7 @@ export class GitHubService {
     const data = await this.request(path, {
       method: 'PUT',
       body: JSON.stringify({
-        message: `Update ${file.filename} via MGR`,
+        message: `Update ${file.filename} via gtbook`,
         content: base64Content,
         sha: file.sha,
       }),
@@ -136,7 +136,7 @@ export class GitHubService {
     await this.request(`/repos/${this.config.owner}/${this.config.repo}/contents/${path}`, {
       method: 'PUT',
       body: JSON.stringify({
-        message: `Create ${filename} via MGR`,
+        message: `Create ${filename} via gtbook`,
         content: btoa('\n'),
       }),
     });
@@ -149,7 +149,7 @@ export class GitHubService {
     await this.request(path, {
       method: 'DELETE',
       body: JSON.stringify({
-        message: `Delete ${file.filename} via MGR`,
+        message: `Delete ${file.filename} via gtbook`,
         sha: file.sha,
       }),
     });
@@ -169,7 +169,7 @@ export class GitHubService {
     await this.request(createPath, {
       method: 'PUT',
       body: JSON.stringify({
-        message: `Rename ${file.filename} to ${newFilename} via MGR`,
+        message: `Rename ${file.filename} to ${newFilename} via gtbook`,
         content: base64Content,
       }),
     });

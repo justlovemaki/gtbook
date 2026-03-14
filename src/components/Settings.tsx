@@ -3,12 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { clsx } from 'clsx';
 import { useStore } from '../store/useStore';
 import type { AppConfig } from '../lib/types';
-import { X, Save, Key, Github, FolderOpen, Globe, Languages, Eye, EyeOff, Moon, Sun, Settings as SettingsIcon, Sparkles, Download, Upload, Monitor } from 'lucide-react';
+import { X, Save, Key, Github, FolderOpen, Globe, Languages, Eye, EyeOff, Moon, Sun, Settings as SettingsIcon, Sparkles, Download, Upload, Monitor, CloudUpload } from 'lucide-react';
 import { toast } from '../store/useToast';
 
 export const Settings: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   const { t, i18n } = useTranslation();
-  const { config, setConfig, theme, setTheme } = useStore();
+  const { config, setConfig, theme, setTheme, pendingChanges, clearPendingChanges, files } = useStore();
+  const [isSyncing, setIsSyncing] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [showGithubToken, setShowGithubToken] = useState(false);
   const [localConfig, setLocalConfig] = useState<AppConfig>(() => {
@@ -38,7 +39,7 @@ export const Settings: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `mgr-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `gtbook-backup-${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success(t('settings.backupExportSuccess'));
@@ -58,13 +59,47 @@ export const Settings: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
         }
         if (data.files) {
           useStore.getState().setFiles(data.files);
+          // Add imported files to pending changes to allow manual sync to cloud
+          data.files.forEach((file: any) => {
+            useStore.getState().addPendingChange({
+              path: file.path,
+              content: file.content,
+              sha: file.sha
+            });
+          });
         }
         toast.success(t('settings.backupRestoreSuccess'));
+        if (data.files && data.files.length > 0) {
+          toast.info(t('settings.backupRestoreSync'));
+        }
       } catch (err) {
         toast.error(t('settings.invalidBackup'));
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleSyncAll = async () => {
+    if (!config || pendingChanges.length === 0) return;
+    setIsSyncing(true);
+    toast.info(t('sync.syncing'));
+    try {
+      const { GitHubService } = await import('../lib/github');
+      const github = new GitHubService(config);
+      for (const change of pendingChanges) {
+        const file = files.find(f => f.path === change.path);
+        if (file) {
+          await github.updateFile({ ...file, sha: change.sha }, change.content);
+        }
+      }
+      clearPendingChanges();
+      toast.success(t('sync.success'));
+    } catch (err: any) {
+      const msg = err.message === "CONFLICT" ? t('sync.conflict') : err.message;
+      toast.error(t('sync.failed') + ": " + msg);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   return (
@@ -257,6 +292,21 @@ export const Settings: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
                 <input type="file" className="hidden" accept=".json" onChange={handleImport} />
               </label>
             </div>
+            
+            {pendingChanges.length > 0 && (
+              <button
+                onClick={handleSyncAll}
+                disabled={isSyncing}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-3 mt-3 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-xs font-bold transition-all shadow-lg shadow-amber-500/20 animate-in fade-in slide-in-from-top-2"
+              >
+                {isSyncing ? (
+                  <Sparkles className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <CloudUpload className="w-3.5 h-3.5" />
+                )}
+                {t('sync.offlineSyncButton')} ({pendingChanges.length})
+              </button>
+            )}
           </div>
         </div>
 

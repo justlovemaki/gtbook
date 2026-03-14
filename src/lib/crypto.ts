@@ -16,7 +16,7 @@ async function getEncryptionKey(password: string): Promise<CryptoKey> {
   return crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
-      salt: enc.encode('mgr-salt-2026'),
+      salt: enc.encode('gtbook-salt-2026'),
       iterations: 100000,
       hash: 'SHA-256',
     },

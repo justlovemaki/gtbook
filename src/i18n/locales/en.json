@@ -12,7 +12,7 @@
     "loading": "Loading..."
   },
   "app": {
-    "title": "MGR Reader",
+    "title": "gtbook",
     "description": "A modern, minimalist favorites manager using GitHub as your backend. Purely client-side, secure, and AI-powered.",
     "getStarted": "Get Started",
     "failedFetch": "Failed to fetch files"
@@ -37,6 +37,7 @@
     "importBackup": "Import Backup",
     "backupExportSuccess": "Backup exported successfully",
     "backupRestoreSuccess": "Backup restored successfully",
+    "backupRestoreSync": "Local data differs from cloud. Use the sync button in the sidebar to update GitHub.",
     "invalidBackup": "Invalid backup file"
   },
   "sync": {
@@ -140,8 +141,8 @@
     "folderEmpty": "This folder is empty",
     "accessingFavorites": "Accessing Favorites...",
     "readerMode": "Reader Mode",
-    "digitalNavigator": "Digital Navigator.",
-    "gatewayDesc": "A high-fidelity gateway to your curated digital ecosystem. Precise, minimalist, and powered by GitHub.",
+    "digitalNavigator": "Smart Collector.",
+    "gatewayDesc": "AI-powered GitHub link manager. Smart organizing, semantic search, and an orderly digital ecosystem.",
     "searchAll": "Search all bookmarks...",
     "searchResults": "Search Results",
     "found": "Found",

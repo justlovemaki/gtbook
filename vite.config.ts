@@ -10,8 +10,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icons.svg'],
       manifest: {
-        name: 'MGR Reader',
-        short_name: 'MGR',
+        name: 'gtbook',
+        short_name: 'gtbook',
         description: 'GitHub Favorites Manager',
         theme_color: '#ffffff',
         icons: [

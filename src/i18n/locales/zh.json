@@ -12,7 +12,7 @@
     "loading": "加载中..."
   },
   "app": {
-    "title": "MGR 阅读器",
+    "title": "gtbook",
     "description": "一个现代、简约的收藏夹管理器，使用 GitHub 作为后端。纯客户端运行，安全且由 AI 驱动。",
     "getStarted": "开始使用",
     "failedFetch": "获取文件失败"
@@ -37,6 +37,7 @@
     "importBackup": "导入备份",
     "backupExportSuccess": "备份导出成功",
     "backupRestoreSuccess": "备份还原成功",
+    "backupRestoreSync": "检测到本地数据与云端不一致，请点击侧边栏同步按钮覆盖云端。",
     "invalidBackup": "无效的备份文件"
   },
   "sync": {
@@ -140,8 +141,8 @@
     "folderEmpty": "此文件夹为空",
     "accessingFavorites": "正在访问收藏夹...",
     "readerMode": "阅读模式",
-    "digitalNavigator": "数字导航器。",
-    "gatewayDesc": "通往您精心策划的数字生态系统的高保真门户。精准、简约，由 GitHub 驱动。",
+    "digitalNavigator": "智能收藏家。",
+    "gatewayDesc": "AI 助力的 GitHub 链接管家。一键智能入库，语义化深度搜索，让碎片信息井然有序。",
     "searchAll": "搜索所有书签...",
     "searchResults": "搜索结果",
     "found": "个结果",

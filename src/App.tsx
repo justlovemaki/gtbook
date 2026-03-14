@@ -1,31 +1,39 @@
 import { useEffect, useState } from 'react';
-import { Sidebar } from './components/Sidebar';
-import { Reader } from './components/Reader';
+import { FileNav } from './components/FileNav';
+import { BookmarkTree } from './components/BookmarkTree';
+import { ContentView } from './components/ContentView';
+import { NavigationMode } from './components/NavigationMode';
 import { Settings } from './components/Settings';
 import { AIAssistant } from './components/AIAssistant';
 import { useStore } from './store/useStore';
 import { GitHubService } from './lib/github';
 import { Github } from 'lucide-react';
+import { clsx } from 'clsx';
 
 function App() {
-  const { config, setFiles, setLoading, setError } = useStore();
+  const { config, setFiles, setLoading, setError, isLoading, files, setLastFetched, viewMode, mobileActivePane } = useStore();
   const [isSettingsOpen, setIsSettingsOpen] = useState(!config);
 
   useEffect(() => {
-    if (config?.githubToken && config?.owner && config?.repo) {
-      loadData();
+    const hasConfig = config?.githubToken && config?.owner && config?.repo;
+    if (hasConfig && !isLoading) {
+      if (files.length === 0) {
+        loadData();
+      }
     }
   }, [config]);
 
-  const loadData = async () => {
+  const loadData = async (force: boolean = false) => {
     if (!config) return;
     setLoading(true);
     setError(null);
     try {
       const github = new GitHubService(config);
-      const data = await github.fetchFiles();
+      const data = await github.fetchFiles(force);
       setFiles(data);
+      setLastFetched(Date.now());
     } catch (err: any) {
+      console.error(err);
       setError(err.message || 'Failed to fetch files');
     } finally {
       setLoading(false);
@@ -33,12 +41,48 @@ function App() {
   };
 
   return (
-    <div className="flex h-screen bg-background text-foreground overflow-hidden">
-      <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />
-      
-      <main className="flex-1 flex flex-col min-w-0">
-        <Reader />
-      </main>
+    <div className="flex h-screen bg-background text-foreground overflow-hidden relative">
+      {viewMode === 'reader' ? (
+        <>
+          {/* Main Layout for Reader Mode */}
+          <div className="flex flex-1 h-full overflow-hidden">
+            {/* File Navigation Pane */}
+            <div className={clsx(
+              "w-full md:w-48 h-full border-r shrink-0 transition-all",
+              mobileActivePane !== 'files' && "hidden md:flex"
+            )}>
+              <FileNav 
+                onOpenSettings={() => setIsSettingsOpen(true)} 
+                onRefresh={() => loadData(true)}
+              />
+            </div>
+
+            {/* Bookmark Tree Pane */}
+            <div className={clsx(
+              "md:w-80 h-full border-r shrink-0 transition-all bg-muted/5",
+              mobileActivePane !== 'bookmarks' && "hidden md:flex",
+              mobileActivePane === 'bookmarks' && "flex-1 md:flex-none md:w-80"
+            )}>
+              <BookmarkTree />
+            </div>
+            
+            {/* Content Preview Pane */}
+            <main className={clsx(
+              "flex-1 h-full flex flex-col min-w-0 transition-all",
+              mobileActivePane !== 'content' && "hidden md:flex"
+            )}>
+              <ContentView />
+            </main>
+          </div>
+        </>
+      ) : (
+        <main className="flex-1 h-full flex flex-col min-w-0 overflow-hidden">
+          <NavigationMode 
+            onOpenSettings={() => setIsSettingsOpen(true)} 
+            onRefresh={() => loadData(true)}
+          />
+        </main>
+      )}
 
       <AIAssistant />
       

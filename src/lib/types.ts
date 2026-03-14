@@ -26,4 +26,5 @@ export interface AppConfig {
   repo: string;
   path: string;
   openaiKey: string;
+  openaiBaseUrl?: string;
 }

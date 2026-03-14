@@ -5,9 +5,13 @@ import { X, Save, Key, Github, FolderOpen, Settings as SettingsIcon } from 'luci
 
 export const Settings: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   const { config, setConfig } = useStore();
-  const [localConfig, setLocalConfig] = useState<AppConfig>(
-    config || { githubToken: '', owner: '', repo: '', path: '', openaiKey: '' }
-  );
+  const [localConfig, setLocalConfig] = useState<AppConfig>(() => {
+    const base = config || { githubToken: '', owner: '', repo: '', path: '', openaiKey: '' };
+    return {
+      ...base,
+      openaiBaseUrl: base.openaiBaseUrl || 'https://api.openai.com/v1'
+    };
+  });
 
   if (!isOpen) return null;
 
@@ -88,6 +92,17 @@ export const Settings: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
               placeholder="sk-..."
               value={localConfig.openaiKey}
               onChange={(e) => setLocalConfig({ ...localConfig, openaiKey: e.target.value })}
+              className="w-full px-3 py-2 bg-muted/50 border rounded-md text-sm focus:ring-1 focus:ring-primary outline-none"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">OpenAI Base URL</label>
+            <input
+              type="text"
+              placeholder="https://api.openai.com/v1"
+              value={localConfig.openaiBaseUrl}
+              onChange={(e) => setLocalConfig({ ...localConfig, openaiBaseUrl: e.target.value })}
               className="w-full px-3 py-2 bg-muted/50 border rounded-md text-sm focus:ring-1 focus:ring-primary outline-none"
             />
           </div>

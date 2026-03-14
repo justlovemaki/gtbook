@@ -18,14 +18,18 @@ import {
   FolderPlus,
   Plus,
   RefreshCw,
-  ArrowLeft
+  ArrowLeft,
+  ArrowUp,
+  ArrowDown,
+  Move
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Bookmark, Directory } from '../lib/types';
 import { GitHubService } from '../lib/github';
-import { updateBookmarkInMarkdown, deleteFromMarkdown, parseMarkdown, insertDirectoryToMarkdown, renameDirectoryInMarkdown, deleteDirectoryFromMarkdown, insertLinkToMarkdown } from '../lib/markdown';
+import { updateBookmarkInMarkdown, deleteFromMarkdown, parseMarkdown, insertDirectoryToMarkdown, renameDirectoryInMarkdown, deleteDirectoryFromMarkdown, insertLinkToMarkdown, moveItemInMarkdown, moveItemToFolderInMarkdown } from '../lib/markdown';
 import { toast } from '../store/useToast';
+import { MoveToFolderModal } from './MoveToFolderModal';
 
 interface SearchResult {
   title: string;
@@ -41,6 +45,7 @@ const TreeNode: React.FC<{ item: Bookmark | Directory; depth: number; filename: 
   const [isOpen, setIsOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
   const isDir = 'children' in item;
 
   const handleClick = () => {
@@ -74,7 +79,7 @@ const TreeNode: React.FC<{ item: Bookmark | Directory; depth: number; filename: 
           const newSha = await github.updateFile({ ...targetFile, sha: latestSha }, updatedRaw);
           const updatedFiles = [...files];
           updatedFiles[fileIndex] = { ...targetFile, content: updatedRaw, sha: newSha, tree: parseMarkdown(updatedRaw) };
-          setFiles(updatedFiles);
+          setFiles(updatedFiles, true);
           toast.success(t('common.success'));
         } catch (err) {
           useStore.getState().addPendingChange({ path: targetFile.path, content: updatedRaw, sha: latestSha });
@@ -102,7 +107,7 @@ const TreeNode: React.FC<{ item: Bookmark | Directory; depth: number; filename: 
           const newSha = await github.updateFile({ ...targetFile, sha: latestSha }, updatedRaw);
           const updatedFiles = [...files];
           updatedFiles[fileIndex] = { ...targetFile, content: updatedRaw, sha: newSha, tree: parseMarkdown(updatedRaw) };
-          setFiles(updatedFiles);
+          setFiles(updatedFiles, true);
           toast.success(t('common.success'));
           if (selectedUrl === bookmark.url) setSelectedUrl(newUrl || bookmark.url);
         } catch (err) {
@@ -118,6 +123,104 @@ const TreeNode: React.FC<{ item: Bookmark | Directory; depth: number; filename: 
     }
   };
 
+  const handleMove = async (e: React.MouseEvent, direction: 'up' | 'down') => {
+    e.stopPropagation();
+    if (!config) return;
+    try {
+      const github = new GitHubService(config);
+      const targetFile = files[fileIndex];
+      const { content: currentRaw, sha: latestSha } = await github.getFileRawContent(targetFile.path);
+      const updatedRaw = moveItemInMarkdown(currentRaw, item.title, isDir ? 'dir' : (item as Bookmark).url, direction as any);
+      
+      if (updatedRaw === currentRaw) return; // No move possible
+
+      try {
+        const newSha = await github.updateFile({ ...targetFile, sha: latestSha }, updatedRaw);
+        const updatedFiles = [...files];
+        updatedFiles[fileIndex] = { ...targetFile, content: updatedRaw, sha: newSha, tree: parseMarkdown(updatedRaw) };
+        setFiles(updatedFiles, true);
+      } catch (err) {
+        useStore.getState().addPendingChange({ path: targetFile.path, content: updatedRaw, sha: latestSha });
+        const updatedFiles = [...files];
+        updatedFiles[fileIndex] = { ...targetFile, content: updatedRaw, tree: parseMarkdown(updatedRaw), sha: latestSha };
+        setFiles(updatedFiles);
+        toast.warning(t('sync.offlineSave'));
+      }
+    } catch (err: any) {
+      toast.error(t('common.failed'), err.message);
+    }
+  };
+
+  const handleMoveToFolder = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!config) return;
+    setIsMoveModalOpen(true);
+  };
+
+  const onSelectTargetFolder = async (target: { filename: string; path: string; fileIndex: number; title: string; insertBefore?: { title: string; url: string | 'dir' } }) => {
+    setIsMoveModalOpen(false);
+    if (!config) return;
+    
+    try {
+      const github = new GitHubService(config);
+      const sourceFile = files[fileIndex];
+      const targetFile = files[target.fileIndex];
+      
+      const { content: sourceRaw, sha: sourceSha } = await github.getFileRawContent(sourceFile.path);
+      const targetData = target.fileIndex === fileIndex 
+        ? { content: sourceRaw, sha: sourceSha }
+        : await github.getFileRawContent(targetFile.path);
+
+      const { newSourceContent, newTargetContent } = moveItemToFolderInMarkdown(
+        sourceRaw,
+        targetData.content,
+        item.title,
+        isDir ? 'dir' : (item as Bookmark).url,
+        target.title,
+        target.insertBefore?.title,
+        target.insertBefore?.url
+      );
+
+      // 3. Update GitHub
+      try {
+        if (target.fileIndex === fileIndex) {
+          const newSha = await github.updateFile({ ...sourceFile, sha: sourceSha }, newTargetContent);
+          const updatedFiles = [...files];
+          updatedFiles[fileIndex] = { ...sourceFile, content: newTargetContent, sha: newSha, tree: parseMarkdown(newTargetContent) };
+          setFiles(updatedFiles, true);
+        } else {
+          // Two separate updates
+          const newSourceSha = await github.updateFile({ ...sourceFile, sha: sourceSha }, newSourceContent);
+          const newTargetSha = await github.updateFile({ ...targetFile, sha: targetData.sha }, newTargetContent);
+          
+          const updatedFiles = [...files];
+          updatedFiles[fileIndex] = { ...sourceFile, content: newSourceContent, sha: newSourceSha, tree: parseMarkdown(newSourceContent) };
+          updatedFiles[target.fileIndex] = { ...targetFile, content: newTargetContent, sha: newTargetSha, tree: parseMarkdown(newTargetContent) };
+          setFiles(updatedFiles, true);
+        }
+        toast.success(t('common.success'));
+      } catch (err) {
+        // Offline support
+        if (target.fileIndex === fileIndex) {
+          useStore.getState().addPendingChange({ path: sourceFile.path, content: newTargetContent, sha: sourceSha });
+          const updatedFiles = [...files];
+          updatedFiles[fileIndex] = { ...sourceFile, content: newTargetContent, tree: parseMarkdown(newTargetContent), sha: sourceSha };
+          setFiles(updatedFiles);
+        } else {
+          useStore.getState().addPendingChange({ path: sourceFile.path, content: newSourceContent, sha: sourceSha });
+          useStore.getState().addPendingChange({ path: targetFile.path, content: newTargetContent, sha: targetData.sha });
+          const updatedFiles = [...files];
+          updatedFiles[fileIndex] = { ...sourceFile, content: newSourceContent, tree: parseMarkdown(newSourceContent), sha: sourceSha };
+          updatedFiles[target.fileIndex] = { ...targetFile, content: newTargetContent, tree: parseMarkdown(newTargetContent), sha: targetData.sha };
+          setFiles(updatedFiles);
+        }
+        toast.warning(t('sync.offlineSave'));
+      }
+    } catch (err: any) {
+      toast.error(t('common.failed'), err.message);
+    }
+  };
+
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!config) return;
@@ -128,14 +231,14 @@ const TreeNode: React.FC<{ item: Bookmark | Directory; depth: number; filename: 
       const targetFile = files[fileIndex];
       const { content: currentRaw, sha: latestSha } = await github.getFileRawContent(targetFile.path);
       let updatedRaw = isDir ? deleteDirectoryFromMarkdown(currentRaw, item.title) : deleteFromMarkdown(currentRaw, item.title, (item as Bookmark).url);
-      try {
-        const newSha = await github.updateFile({ ...targetFile, sha: latestSha }, updatedRaw);
-        const updatedFiles = [...files];
-        updatedFiles[fileIndex] = { ...targetFile, content: updatedRaw, sha: newSha, tree: parseMarkdown(updatedRaw) };
-        setFiles(updatedFiles);
-        toast.success(t('common.success'));
-        if (!isDir && selectedUrl === (item as Bookmark).url) setSelectedUrl(null);
-      } catch (err) {
+        try {
+          const newSha = await github.updateFile({ ...targetFile, sha: latestSha }, updatedRaw);
+          const updatedFiles = [...files];
+          updatedFiles[fileIndex] = { ...targetFile, content: updatedRaw, sha: newSha, tree: parseMarkdown(updatedRaw) };
+          setFiles(updatedFiles, true);
+          toast.success(t('common.success'));
+          if (!isDir && selectedUrl === (item as Bookmark).url) setSelectedUrl(null);
+        } catch (err) {
         useStore.getState().addPendingChange({ path: targetFile.path, content: updatedRaw, sha: latestSha });
         toast.warning(t('sync.offlineDeleted'));
         const updatedFiles = [...files];
@@ -161,7 +264,7 @@ const TreeNode: React.FC<{ item: Bookmark | Directory; depth: number; filename: 
         const newSha = await github.updateFile({ ...targetFile, sha: latestSha }, updatedRaw);
         const updatedFiles = [...files];
         updatedFiles[fileIndex] = { ...targetFile, content: updatedRaw, sha: newSha, tree: parseMarkdown(updatedRaw) };
-        setFiles(updatedFiles);
+        setFiles(updatedFiles, true);
         setIsOpen(true);
         toast.success(t('common.success'));
       } catch (err) {
@@ -192,7 +295,7 @@ const TreeNode: React.FC<{ item: Bookmark | Directory; depth: number; filename: 
         const newSha = await github.updateFile({ ...targetFile, sha: latestSha }, updatedRaw);
         const updatedFiles = [...files];
         updatedFiles[fileIndex] = { ...targetFile, content: updatedRaw, sha: newSha, tree: parseMarkdown(updatedRaw) };
-        setFiles(updatedFiles);
+        setFiles(updatedFiles, true);
         setIsOpen(true);
         toast.success(t('common.success'));
       } catch (err) {
@@ -247,6 +350,9 @@ const TreeNode: React.FC<{ item: Bookmark | Directory; depth: number; filename: 
                 {copied ? <CheckCircle2 className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
               </button>
             )}
+            <button onClick={(e) => handleMove(e, 'up')} className="p-1 hover:bg-background rounded text-muted-foreground hover:text-primary transition-colors" title={t('bookmark.moveUp')}><ArrowUp className="w-3 h-3" /></button>
+            <button onClick={(e) => handleMove(e, 'down')} className="p-1 hover:bg-background rounded text-muted-foreground hover:text-primary transition-colors" title={t('bookmark.moveDown')}><ArrowDown className="w-3 h-3" /></button>
+            <button onClick={handleMoveToFolder} className="p-1 hover:bg-background rounded text-muted-foreground hover:text-primary transition-colors" title={t('bookmark.moveToFolder')}><Move className="w-3 h-3" /></button>
             <button onClick={handleRename} className="p-1 hover:bg-background rounded text-muted-foreground hover:text-primary transition-colors" title={t('bookmark.rename')}><Edit2 className="w-3 h-3" /></button>
             <button onClick={handleDelete} className="p-1 hover:bg-background rounded text-muted-foreground hover:text-destructive transition-colors" title={t('bookmark.delete')}><Trash2 className="w-3 h-3" /></button>
           </div>
@@ -261,6 +367,13 @@ const TreeNode: React.FC<{ item: Bookmark | Directory; depth: number; filename: 
           </motion.div>
         )}
       </AnimatePresence>
+
+      <MoveToFolderModal
+        isOpen={isMoveModalOpen}
+        onClose={() => setIsMoveModalOpen(false)}
+        onSelect={onSelectTargetFolder}
+        itemTitle={item.title}
+      />
     </div>
   );
 };
@@ -282,7 +395,7 @@ export const BookmarkTree: React.FC = () => {
         const newSha = await github.updateFile({ ...activeFile, sha: latestSha }, updatedRaw);
         const updatedFiles = [...files];
         updatedFiles[activeFileIndex] = { ...activeFile, content: updatedRaw, sha: newSha, tree: parseMarkdown(updatedRaw) };
-        setFiles(updatedFiles);
+        setFiles(updatedFiles, true);
         toast.success(t('common.success'));
       } catch (err) {
         useStore.getState().addPendingChange({ path: activeFile.path, content: updatedRaw, sha: latestSha });
@@ -303,7 +416,7 @@ export const BookmarkTree: React.FC = () => {
       const updatedFile = await github.fetchFileByPath(activeFile.path);
       const updatedFiles = [...files];
       updatedFiles[activeFileIndex] = updatedFile;
-      setFiles(updatedFiles);
+      setFiles(updatedFiles, true);
       toast.success(t('common.success'));
     } catch (err: any) {
       toast.error(t('bookmark.refreshFailed'), err.message);
@@ -367,10 +480,10 @@ export const BookmarkTree: React.FC = () => {
           <>
             <div className="p-3 border-b bg-muted/20 flex items-center justify-between">
               <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2"><Hash className="w-3.5 h-3.5" />{activeFile?.filename.replace(/^\d+-/, '').replace('.md', '') || t('bookmark.noFileSelected')}</h2>
-              <div className="flex items-center gap-1">
-                {activeFile && <button onClick={handleAddRootDir} className="p-1 hover:bg-background rounded text-muted-foreground hover:text-primary transition-colors" title={t('bookmark.newRootFolder')}><Plus className="w-3.5 h-3.5" /></button>}
-                <button onClick={handleRefreshCurrent} className="p-1 hover:bg-background rounded text-muted-foreground hover:text-primary transition-colors" title={t('bookmark.refreshCurrentFile')}><RefreshCw className="w-3.5 h-3.5" /></button>
-              </div>
+      <div className="flex items-center gap-1">
+        <button onClick={handleAddRootDir} className="p-1.5 hover:bg-background rounded-lg text-muted-foreground hover:text-primary transition-colors" title={t('bookmark.newRootFolder')}><FolderPlus className="w-4 h-4" /></button>
+        <button onClick={handleRefreshCurrent} className="p-1.5 hover:bg-background rounded-lg text-muted-foreground hover:text-primary transition-colors" title={t('bookmark.refreshCurrentFile')}><RefreshCw className="w-4 h-4" /></button>
+      </div>
             </div>
             <div className="p-2">
               {!activeFile ? ( <div className="p-4 text-xs text-muted-foreground italic text-center mt-10">{t('bookmark.pleaseSelectFile')}</div> ) : activeFile.tree.length === 0 ? ( <div className="p-4 text-xs text-muted-foreground italic text-center">{t('bookmark.fileEmpty')}</div> ) : (

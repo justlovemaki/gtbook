@@ -12,11 +12,14 @@ import {
   RefreshCw,
   Search,
   X,
-  FileText
+  FileText,
+  CloudUpload
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
 import type { Bookmark, Directory, FavoriteFile } from '../lib/types';
+import { toast } from '../store/useToast';
+import { GitHubService } from '../lib/github';
 
 const getHostname = (url: string) => {
   try {
@@ -116,12 +119,10 @@ const FileCard: React.FC<{ file: FavoriteFile }> = ({ file }) => {
 
   const currentPathNames = navStack.map(d => d.title);
 
-  // Auto-scroll when entering folders
   useEffect(() => {
     if (navStack.length > 0) {
       const target = breadcrumbRef.current || cardRef.current;
       if (target) {
-        // Use scrollIntoView which works better with overflow-y-auto containers and mobile
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     }
@@ -204,8 +205,40 @@ export const NavigationMode: React.FC<{
   onRefresh: () => void 
 }> = ({ onOpenSettings, onRefresh }) => {
   const { t } = useTranslation();
-  const { files, isLoading, setViewMode } = useStore();
+  const { 
+    files, 
+    isLoading, 
+    setViewMode, 
+    pendingChanges, 
+    config, 
+    clearPendingChanges 
+  } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = async () => {
+    if (!config || pendingChanges.length === 0) return;
+    setIsSyncing(true);
+    toast.info(t('sync.syncing'));
+    try {
+      const github = new GitHubService(config);
+      for (const change of pendingChanges) {
+        const file = files.find(f => f.path === change.path);
+        if (file) {
+          // Use force: true to automatically resolve SHA conflicts during batch sync
+          await github.updateFile({ ...file }, change.content, true);
+        }
+      }
+      clearPendingChanges();
+      onRefresh();
+      toast.success(t('sync.success'));
+    } catch (err: any) {
+      const msg = err.message === "CONFLICT" ? t('sync.conflict') : err.message;
+      toast.error(t('sync.failed') + ": " + msg);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
@@ -257,8 +290,19 @@ export const NavigationMode: React.FC<{
           className="p-2.5 bg-background/80 backdrop-blur border rounded-full shadow-lg hover:shadow-xl transition-all text-muted-foreground hover:text-primary border-border"
           title={t('fileNav.refreshAll')}
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className={clsx("w-4 h-4", isLoading && "animate-spin")} />
         </button>
+        {pendingChanges.length > 0 && (
+          <button
+            onClick={handleSync}
+            disabled={isSyncing}
+            className="p-2.5 bg-background/80 backdrop-blur border border-amber-500/30 rounded-full shadow-lg hover:shadow-xl transition-all text-amber-500 hover:text-amber-600 animate-pulse flex items-center gap-2"
+            title={t('sync.offlineSyncButton')}
+          >
+            <CloudUpload className={clsx("w-4 h-4", isSyncing && "animate-spin")} />
+            <span className="text-[10px] font-black pr-1">{pendingChanges.length}</span>
+          </button>
+        )}
         <button
           onClick={onOpenSettings}
           className="p-2.5 bg-background/80 backdrop-blur border rounded-full shadow-lg hover:shadow-xl transition-all text-muted-foreground hover:text-primary border-border"

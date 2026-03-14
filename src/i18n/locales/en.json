@@ -38,7 +38,8 @@
     "backupExportSuccess": "Backup exported successfully",
     "backupRestoreSuccess": "Backup restored successfully",
     "backupRestoreSync": "Local data differs from cloud. Use the sync button in the sidebar to update GitHub.",
-    "invalidBackup": "Invalid backup file"
+    "invalidBackup": "Invalid backup file",
+    "projectLink": "Project Open Source"
   },
   "sync": {
     "offlineSave": "Offline: Saved locally",
@@ -90,7 +91,17 @@
     "fileEmpty": "This file is empty",
     "enterNewFolderNameAtRoot": "Enter new folder name at root:",
     "updateFailed": "Update failed",
-    "refreshFailed": "Refresh failed"
+    "refreshFailed": "Refresh failed",
+    "moveToFolder": "Move to Folder",
+    "moveUp": "Move Up",
+    "moveDown": "Move Down",
+    "movePrecise": "Precise Move",
+    "insertAtEnd": "Insert at the end",
+    "insertBefore": "Insert before this item",
+    "selectTargetFolder": "Select Destination Folder",
+    "backToFolders": "Back to folders",
+    "movingItem": "Moving \"{{name}}\"",
+    "searchFolders": "Search folders..."
   },
   "ai": {
     "title": "AI Assistant",

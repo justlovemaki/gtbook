@@ -6,7 +6,11 @@ import type { AppConfig } from '../lib/types';
 import { X, Save, Key, Github, FolderOpen, Globe, Languages, Eye, EyeOff, Moon, Sun, Settings as SettingsIcon, Sparkles, Download, Upload, Monitor, CloudUpload } from 'lucide-react';
 import { toast } from '../store/useToast';
 
-export const Settings: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
+export const Settings: React.FC<{ 
+  isOpen: boolean; 
+  onClose: () => void;
+  onRefresh?: () => void;
+}> = ({ isOpen, onClose, onRefresh }) => {
   const { t, i18n } = useTranslation();
   const { config, setConfig, theme, setTheme, pendingChanges, clearPendingChanges, files } = useStore();
   const [isSyncing, setIsSyncing] = useState(false);
@@ -50,7 +54,7 @@ export const Settings: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const data = JSON.parse(event.target?.result as string);
         if (data.config) {
@@ -58,18 +62,32 @@ export const Settings: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
           setConfig(data.config);
         }
         if (data.files) {
-          useStore.getState().setFiles(data.files);
-          // Add imported files to pending changes to allow manual sync to cloud
+          // First, ensure we have the latest from cloud to compare against
+          // Await it to ensure state is updated before we add pending changes
+          if (onRefresh) {
+            await (onRefresh() as any);
+          }
+          
+          const store = useStore.getState();
+          
+          // Clear current pending changes
+          store.clearPendingChanges();
+          
+          // Add imported files to pending changes
+          // These will be compared against the cloud files we just refreshed
           data.files.forEach((file: any) => {
-            useStore.getState().addPendingChange({
+            store.addPendingChange({
               path: file.path,
               content: file.content,
               sha: file.sha
             });
           });
+
+          // Set files locally
+          store.setFiles(data.files, false);
         }
         toast.success(t('settings.backupRestoreSuccess'));
-        if (data.files && data.files.length > 0) {
+        if (useStore.getState().pendingChanges.length > 0) {
           toast.info(t('settings.backupRestoreSync'));
         }
       } catch (err) {
@@ -86,13 +104,24 @@ export const Settings: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
     try {
       const { GitHubService } = await import('../lib/github');
       const github = new GitHubService(config);
+      
+      // Clone files to track latest SHAs during the loop
+      let currentFiles = [...files];
+      
       for (const change of pendingChanges) {
-        const file = files.find(f => f.path === change.path);
+        const file = currentFiles.find(f => f.path === change.path);
         if (file) {
-          await github.updateFile({ ...file, sha: change.sha }, change.content);
+          // Use force: true to automatically resolve SHA conflicts during batch sync
+          const newSha = await github.updateFile({ ...file }, change.content, true);
+          currentFiles = currentFiles.map(f => f.path === file.path ? { ...f, sha: newSha } : f);
         }
       }
+      
+      // Update global store with the final state of SHAs
+      useStore.getState().setFiles(currentFiles, true);
+      
       clearPendingChanges();
+      if (onRefresh) onRefresh();
       toast.success(t('sync.success'));
     } catch (err: any) {
       const msg = err.message === "CONFLICT" ? t('sync.conflict') : err.message;
@@ -106,10 +135,21 @@ export const Settings: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
       <div className="w-full max-w-md bg-card border rounded-lg shadow-lg flex flex-col">
         <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="font-semibold flex items-center gap-2">
-            <SettingsIcon className="w-4 h-4" />
-            {t('settings.title')}
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="font-semibold flex items-center gap-2">
+              <SettingsIcon className="w-4 h-4" />
+              {t('settings.title')}
+            </h2>
+            <a 
+              href="https://github.com/justlovemaki/gtbook" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors border-l pl-3 ml-1"
+            >
+              <Github className="w-3 h-3" />
+              <span>{t('settings.projectLink')}</span>
+            </a>
+          </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X className="w-4 h-4" />
           </button>
@@ -227,7 +267,7 @@ export const Settings: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
               <Languages className="w-4 h-4" /> {t('settings.language')}
             </label>
             <select
-              value={i18n.language}
+              value={i18n.resolvedLanguage}
               onChange={(e) => i18n.changeLanguage(e.target.value)}
               className="w-full px-3 py-2 bg-muted/50 border rounded-md text-sm focus:ring-1 focus:ring-primary outline-none appearance-none"
             >

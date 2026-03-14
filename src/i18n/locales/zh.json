@@ -38,7 +38,8 @@
     "backupExportSuccess": "备份导出成功",
     "backupRestoreSuccess": "备份还原成功",
     "backupRestoreSync": "检测到本地数据与云端不一致，请点击侧边栏同步按钮覆盖云端。",
-    "invalidBackup": "无效的备份文件"
+    "invalidBackup": "无效的备份文件",
+    "projectLink": "项目开源地址"
   },
   "sync": {
     "offlineSave": "离线状态：已保存到本地",
@@ -90,7 +91,17 @@
     "fileEmpty": "此文件为空",
     "enterNewFolderNameAtRoot": "在根目录输入新文件夹名称：",
     "updateFailed": "更新失败",
-    "refreshFailed": "刷新失败"
+    "refreshFailed": "刷新失败",
+    "moveToFolder": "移动到文件夹",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "movePrecise": "精准移动",
+    "insertAtEnd": "插入到末尾",
+    "insertBefore": "插入到此项之前",
+    "selectTargetFolder": "选择目标文件夹",
+    "backToFolders": "返回文件夹列表",
+    "movingItem": "正在移动 \"{{name}}\"",
+    "searchFolders": "搜索文件夹..."
   },
   "ai": {
     "title": "AI 助手",

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { get, set, del } from 'idb-keyval';
 import type { AppConfig, FavoriteFile } from '../lib/types';
+import { parseMarkdown } from '../lib/markdown';
 
 // Custom storage for IndexedDB using idb-keyval
 const idbStorage = {
@@ -32,10 +33,10 @@ interface AppState {
   _hasHydrated: boolean;
   pendingChanges: { path: string; content: string; sha: string }[];
   setHasHydrated: (state: boolean) => void;
-  addPendingChange: (change: { path: string; content: string; sha: string }) => void;
+  addPendingChange: (change: { path: string; content: string; sha: string }, force?: boolean) => void;
   clearPendingChanges: () => void;
   setConfig: (config: AppConfig) => void;
-  setFiles: (files: FavoriteFile[]) => void;
+  setFiles: (files: FavoriteFile[], isCloud?: boolean) => void;
   setActiveFileIndex: (index: number) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -73,12 +74,55 @@ export const useStore = create<AppState>()(
       pendingChanges: [],
       setHasHydrated: (state) => set({ _hasHydrated: state }),
       setSearchQuery: (searchQuery) => set({ searchQuery }),
-      addPendingChange: (change) => set((state) => ({ 
-        pendingChanges: [...state.pendingChanges.filter(c => c.path !== change.path), change] 
-      })),
+      addPendingChange: (change, force = false) => set((state) => {
+        // Find if this file already exists in current files and has same content
+        const existingFile = state.files.find(f => f.path === change.path);
+        if (!force && existingFile && existingFile.content === change.content) {
+          // If content is same as current file, remove from pending instead of adding
+          return {
+            pendingChanges: state.pendingChanges.filter(c => c.path !== change.path)
+          };
+        }
+        return { 
+          pendingChanges: [...state.pendingChanges.filter(c => c.path !== change.path), change] 
+        };
+      }),
       clearPendingChanges: () => set({ pendingChanges: [] }),
       setConfig: (config: AppConfig) => set({ config }),
-      setFiles: (files) => set({ files }),
+      setFiles: (newFiles, isCloud = false) => set((state) => {
+        const mergedFiles = isCloud 
+          ? newFiles.map(file => {
+              const change = state.pendingChanges.find(c => c.path === file.path);
+              if (change) {
+                // Check if the pending change content is actually different from the new remote content
+                if (change.content === file.content) {
+                  return file;
+                }
+                return { 
+                  ...file, 
+                  content: change.content, 
+                  tree: parseMarkdown(change.content) 
+                };
+              }
+              return file;
+            })
+          : newFiles;
+
+        // Clean up pending changes that are now identical to remote
+        // ONLY if this update comes from the cloud source of truth
+        let filteredPending = state.pendingChanges;
+        if (isCloud) {
+          filteredPending = state.pendingChanges.filter(change => {
+            const remoteFile = newFiles.find(f => f.path === change.path);
+            return !remoteFile || remoteFile.content !== change.content;
+          });
+        }
+
+        return { 
+          files: mergedFiles,
+          pendingChanges: filteredPending
+        };
+      }),
       setActiveFileIndex: (index: number) => set({ activeFileIndex: index, mobileActivePane: 'bookmarks' }),
       setLoading: (loading) => set({ isLoading: loading }),
       setError: (error) => set({ error }),

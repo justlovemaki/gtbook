@@ -178,11 +178,19 @@ Return JSON format:
       const github = new GitHubService(config);
       const { content: currentRaw, sha: latestSha } = await github.getFileRawContent(targetFile.path);
       const updatedRaw = insertLinkToMarkdown(currentRaw, suggestion.dir, suggestion.title, url);
-      const newSha = await github.updateFile({ ...targetFile, sha: latestSha }, updatedRaw);
-      const updatedFiles = [...files];
-      updatedFiles[fileIndex] = { ...targetFile, content: updatedRaw, sha: newSha, tree: parseMarkdown(updatedRaw) };
-      setFiles(updatedFiles);
-      setStatus('success');
+      try {
+        const newSha = await github.updateFile({ ...targetFile, sha: latestSha }, updatedRaw);
+        const updatedFiles = [...files];
+        updatedFiles[fileIndex] = { ...targetFile, content: updatedRaw, sha: newSha, tree: parseMarkdown(updatedRaw) };
+        setFiles(updatedFiles, true);
+        setStatus('success');
+      } catch (err) {
+        useStore.getState().addPendingChange({ path: targetFile.path, content: updatedRaw, sha: latestSha });
+        const updatedFiles = [...files];
+        updatedFiles[fileIndex] = { ...targetFile, content: updatedRaw, tree: parseMarkdown(updatedRaw), sha: latestSha };
+        setFiles(updatedFiles);
+        setStatus('success'); // Still show success but it's offline
+      }
       setUrl('');
       setTimeout(() => setStatus('idle'), 3000);
     } catch (err) {

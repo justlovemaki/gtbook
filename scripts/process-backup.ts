@@ -32,7 +32,8 @@ function extractLinks(content: string): Bookmark[] {
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         // Match standard markdown links: [Title](URL)
-        const match = line.match(/\[(.*?)\]\((https?:\/\/.*?)\)/);
+        // Improved regex to handle URLs with parentheses better by stopping at the last ) that is followed by end of line or space
+        const match = line.match(/\[(.*?)\]\((https?:\/\/[^\s\)]+)\)/);
         if (match) {
             links.push({
                 title: match[1],
@@ -66,10 +67,10 @@ async function checkLink(url: string): Promise<{ ok: boolean; status?: number; e
     }
 }
 
-async function findAlternative(title: string, oldUrl: string): Promise<string | null> {
-    const apiKey = process.env.OPENAI_API_KEY;
-    const baseUrl = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
-    const model = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
+async function findAlternative(title: string, oldUrl: string, config: { apiKey?: string; baseUrl?: string; model?: string }): Promise<string | null> {
+    const apiKey = config.apiKey || process.env.OPENAI_API_KEY;
+    const baseUrl = config.baseUrl || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
+    const model = config.model || process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
 
     if (!apiKey) return null;
 
@@ -90,15 +91,86 @@ async function findAlternative(title: string, oldUrl: string): Promise<string | 
             })
         });
 
+        if (!response.ok) return null;
+
         const data: any = await response.json();
-        const result = data.choices[0].message.content.trim();
+        const result = data.choices?.[0]?.message?.content?.trim();
         if (result && result.startsWith('http')) {
+            // 验证 AI 找到的链接
             const check = await checkLink(result);
             if (check.ok) return result;
+            
+            // AI 找到的链接可能也需要 Jina 挽救
+            const jinaCheck = await checkWithJina(result);
+            if (jinaCheck.ok) return result;
         }
         return null;
     } catch (err) {
         return null;
+    }
+}
+
+// Simple markdown parser to regenerate tree
+function parseMarkdown(text: string): any[] {
+    const lines = text.split('\n');
+    const root: any[] = [];
+    const stack: { level: number; children: any[] }[] = [
+        { level: 0, children: root },
+    ];
+
+    for (const line of lines) {
+        // Match standard markdown links: * [Title](URL)
+        const match = line.match(/^((?:\*\s+)+)\[(.*?)\]\((https?:\/\/[^\s\)]+|dir)\)/);
+        if (!match) continue;
+
+        const [, starGroup, title, content] = match;
+        const level = (starGroup.match(/\*/g) || []).length;
+
+        while (stack.length > 1 && stack[stack.length - 1].level >= level) {
+            stack.pop();
+        }
+
+        const parent = stack[stack.length - 1];
+
+        if (content === 'dir') {
+            const dir: any = {
+                id: Math.random().toString(36).substring(2, 11),
+                title,
+                level,
+                children: [],
+            };
+            parent.children.push(dir);
+            stack.push({ level, children: dir.children });
+        } else {
+            const bookmark: any = {
+                id: Math.random().toString(36).substring(2, 11),
+                title,
+                url: content,
+                level,
+            };
+            parent.children.push(bookmark);
+        }
+    }
+
+    return root;
+}
+
+async function checkWithJina(url: string): Promise<{ ok: boolean }> {
+    try {
+        const jinaUrl = `https://r.jina.ai/${url}`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        const res = await fetch(jinaUrl, {
+            method: 'GET',
+            signal: controller.signal,
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
+        });
+        clearTimeout(timeout);
+        
+        // 如果 Jina 能返回 200，说明网页大概率还是可以被爬取的（即存活）
+        return { ok: res.status === 200 };
+    } catch (err) {
+        return { ok: false };
     }
 }
 
@@ -111,6 +183,13 @@ async function processBackupFile(filePath: string) {
     console.log(`Loading backup file: ${filePath}`);
     const backupData: BackupData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     
+    // Extract config from backup
+    const aiConfig = {
+        apiKey: backupData.config?.openaiKey,
+        baseUrl: backupData.config?.openaiBaseUrl,
+        model: backupData.config?.openaiModel
+    };
+
     // 1. Create Backup of the JSON file
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupDir = path.join(process.cwd(), '.backup', timestamp);
@@ -130,41 +209,88 @@ async function processBackupFile(filePath: string) {
     };
 
     // 2. Process each file in the backup
-    for (const file of backupData.files) {
-        console.log(`\nProcessing file: ${file.filename}`);
+    for (let fIdx = 0; fIdx < backupData.files.length; fIdx++) {
+        const file = backupData.files[fIdx];
+        console.log(`\n[${fIdx + 1}/${backupData.files.length}] Processing file: ${file.filename}`);
         const links = extractLinks(file.content);
         const lines = file.content.split('\n');
+        
+        if (links.length === 0) {
+            console.log(`  No links found in this file.`);
+            report.filesProcessed++;
+            continue;
+        }
+
+        console.log(`  Found ${links.length} links. Checking...`);
+        
+        // We process from bottom up to handle splicing lines later
         const sortedLinks = [...links].sort((a, b) => b.line - a.line);
         
         let fileDead = 0, fileReplaced = 0, fileDeleted = 0;
+        const concurrencyLimit = 10; // Slightly lower for better stability
+        const linkResults: { link: Bookmark; status: any; alternative?: string | null; verifiedByJina?: boolean }[] = [];
+        
+        for (let i = 0; i < sortedLinks.length; i += concurrencyLimit) {
+            const batch = sortedLinks.slice(i, i + concurrencyLimit);
+            const batchProgress = Math.min(i + concurrencyLimit, sortedLinks.length);
+            console.log(`  Progress: ${batchProgress}/${sortedLinks.length} links checked...`);
 
-        for (const link of sortedLinks) {
-            process.stdout.write(`  Checking [${link.title}]... `);
-            const status = await checkLink(link.url);
-            
-            if (status.ok) {
-                console.log('OK');
+            await Promise.all(batch.map(async (link) => {
+                try {
+                    const status = await checkLink(link.url);
+                    let alternative: string | null = null;
+                    let verifiedByJina = false;
+
+                    if (!status.ok) {
+                        // 第一步：常规检查失败，立即尝试用 Jina 挽救原链接
+                        const jinaCheck = await checkWithJina(link.url);
+                        if (jinaCheck.ok) {
+                            verifiedByJina = true;
+                        } else {
+                            // 第二步：Jina 也无法访问原链接，尝试用 AI 寻找替代链接
+                            // findAlternative 内部现在也会用 Jina 验证它找到的新链接
+                            alternative = await findAlternative(link.title, link.url, aiConfig);
+                            
+                            // 如果 AI 也找不到替代链接，那么 alternative 为 null，verifiedByJina 为 false
+                            // 这种情况下，在随后的循环中该链接会被标记为 DEAD 并最终删除。
+                            // 这符合“有问题的链接再用 jina 跑一次，再出错（Jina 失败且 AI 没找到替代）才删除”的逻辑。
+                        }
+                    }
+                    linkResults.push({ link, status, alternative, verifiedByJina });
+                } catch (err) {
+                    linkResults.push({ link, status: { ok: false, error: 'Internal Error' }, alternative: null, verifiedByJina: false });
+                }
+            }));
+        }
+
+        // Apply changes from bottom to top
+        const sortedResults = linkResults.sort((a, b) => b.link.line - a.link.line);
+        for (const res of sortedResults) {
+            if (res.status.ok || res.verifiedByJina) {
+                if (res.verifiedByJina) {
+                    console.log(`  VERIFIED via Jina: [${res.link.title}]`);
+                }
                 continue;
             }
 
-            console.log(`DEAD (${status.error || status.status})`);
+            console.log(`  DEAD: [${res.link.title}] (${res.status.error || res.status.status})`);
             fileDead++;
 
-            const alternative = await findAlternative(link.title, link.url);
-            if (alternative) {
-                console.log(`    Found alternative: ${alternative}`);
-                lines[link.line] = lines[link.line].replace(link.url, alternative);
+            if (res.alternative) {
+                console.log(`    Found alternative: ${res.alternative}`);
+                lines[res.link.line] = lines[res.link.line].replace(res.link.url, res.alternative);
                 fileReplaced++;
-                report.details.push({ file: file.filename, title: link.title, oldUrl: link.url, newUrl: alternative, action: 'replaced' });
+                report.details.push({ file: file.filename, title: res.link.title, oldUrl: res.link.url, newUrl: res.alternative, action: 'replaced' });
             } else {
                 console.log(`    No alternative found. Deleting.`);
-                lines.splice(link.line, 1);
+                lines.splice(res.link.line, 1);
                 fileDeleted++;
-                report.details.push({ file: file.filename, title: link.title, url: link.url, action: 'deleted' });
+                report.details.push({ file: file.filename, title: res.link.title, url: res.link.url, action: 'deleted' });
             }
         }
 
         file.content = lines.join('\n');
+        file.tree = parseMarkdown(file.content);
         report.filesProcessed++;
         report.totalLinks += links.length;
         report.deadLinks += fileDead;

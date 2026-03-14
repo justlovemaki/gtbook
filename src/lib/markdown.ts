@@ -8,16 +8,12 @@ export function parseMarkdown(text: string): (Bookmark | Directory)[] {
   ];
 
   for (const line of lines) {
-    // 修复正则：捕获所有开头的星号和空格组合
     const match = line.match(/^((?:\*\s+)+)\[(.*?)\]\((.*?)\)/);
     if (!match) continue;
 
     const [, starGroup, title, content] = match;
-    // 根据星号数量计算真实层级
     const level = (starGroup.match(/\*/g) || []).length;
 
-
-    // Pop stack until we find the parent level
     while (stack.length > 1 && stack[stack.length - 1].level >= level) {
       stack.pop();
     }
@@ -58,12 +54,10 @@ export function insertLinkToMarkdown(
   let targetLevel = 0;
 
   if (targetDir === 'root') {
-    // Just append to the end, ensuring it's on a new line
     const suffix = content.endsWith('\n') ? '' : '\n';
     return content + suffix + `* [${title}](${url})`;
   }
 
-  // 1. 寻找目标目录行
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const match = line.match(/^((?:\*\s+)+)\[(.*?)\]\(dir\)/);
@@ -79,8 +73,6 @@ export function insertLinkToMarkdown(
     return content + suffix + `* [${title}](${url})`;
   }
 
-  // 2. 寻找该目录区块的末尾
-  // 我们应该在第一个不是子项的行处停止（包括空行和同级/上级项）
   let i = insertIndex;
   while (i < lines.length) {
     const line = lines[i];
@@ -92,11 +84,9 @@ export function insertLinkToMarkdown(
         continue;
       }
     }
-    // 遇到空行、非列表行、或者同级/上级列表项，停止
     break;
   }
 
-  // 3. 在该位置插入新行
   const stars = '* '.repeat(targetLevel + 1).trim();
   lines.splice(i, 0, `${stars} [${title}](${url})`);
 
@@ -235,7 +225,6 @@ export function deleteDirectoryFromMarkdown(
 
   if (startIndex === -1) return content;
 
-  // Find all children and remove them
   let countToRemove = 1;
   for (let i = startIndex + 1; i < lines.length; i++) {
     const line = lines[i];
@@ -247,9 +236,6 @@ export function deleteDirectoryFromMarkdown(
         continue;
       }
     } else if (line.trim() === '' || !line.trim().startsWith('*')) {
-      // Keep counting non-list lines within the block?
-      // Actually, standard markdown might have empty lines. 
-      // But for simplicity in our specific format, let's just stop when we hit another same-level or parent-level item.
       countToRemove++;
       continue;
     }
@@ -257,5 +243,246 @@ export function deleteDirectoryFromMarkdown(
   }
 
   lines.splice(startIndex, countToRemove);
+  return lines.join('\n');
+}
+
+export function moveItemToFolderInMarkdown(
+  sourceContent: string,
+  targetContent: string,
+  itemTitle: string,
+  itemUrl: string | 'dir',
+  targetParentDir: string,
+  insertBeforeTitle?: string,
+  insertBeforeUrl?: string | 'dir'
+): { newSourceContent: string; newTargetContent: string } {
+  let sourceLines = sourceContent.split('\n');
+  let targetLines = targetContent.split('\n');
+  const isDir = itemUrl === 'dir';
+
+  let startIndex = -1;
+  let sourceLevel = 0;
+  for (let i = 0; i < sourceLines.length; i++) {
+    const line = sourceLines[i];
+    const escapedTitle = itemTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedUrl = isDir ? 'dir' : itemUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`^((?:\\*\\s+)+)\\[${escapedTitle}\\]\\(${escapedUrl}\\)`);
+    if (regex.test(line)) {
+      startIndex = i;
+      sourceLevel = (line.match(/\*/g) || []).length;
+      break;
+    }
+  }
+
+  if (startIndex === -1) return { newSourceContent: sourceContent, newTargetContent: targetContent };
+
+  let count = 1;
+  for (let i = startIndex + 1; i < sourceLines.length; i++) {
+    const line = sourceLines[i];
+    const match = line.match(/^((?:\*\s+)+)\[/);
+    if (match) {
+      const currentLevel = (match[1].match(/\*/g) || []).length;
+      if (currentLevel > sourceLevel) {
+        count++;
+        continue;
+      }
+    } else if (line.trim() === '' || !line.trim().startsWith('*')) {
+      count++;
+      continue;
+    }
+    break;
+  }
+
+  const blockLines = sourceLines.splice(startIndex, count);
+  const newSourceContent = sourceLines.join('\n');
+
+  if (sourceContent === targetContent) {
+    targetLines = sourceLines;
+  }
+
+  let insertIndex = -1;
+  let targetParentLevel = 0;
+  if (targetParentDir === 'root') {
+    targetParentLevel = 0;
+    if (insertBeforeTitle) {
+      for (let i = 0; i < targetLines.length; i++) {
+        const line = targetLines[i];
+        const match = line.match(/^((?:\*\s+)+)\[(.*?)\]\((.*?)\)/);
+        if (match && match[2] === insertBeforeTitle && match[3] === insertBeforeUrl) {
+          insertIndex = i;
+          break;
+        }
+      }
+    }
+    if (insertIndex === -1) insertIndex = targetLines.length;
+  } else {
+    let parentIndex = -1;
+    for (let i = 0; i < targetLines.length; i++) {
+      const line = targetLines[i];
+      const match = line.match(/^((?:\*\s+)+)\[(.*?)\]\(dir\)/);
+      if (match && match[2] === targetParentDir) {
+        parentIndex = i;
+        targetParentLevel = (match[1].match(/\*/g) || []).length;
+        break;
+      }
+    }
+    
+    if (parentIndex !== -1) {
+      if (insertBeforeTitle) {
+        for (let i = parentIndex + 1; i < targetLines.length; i++) {
+          const line = targetLines[i];
+          const match = line.match(/^((?:\*\s+)+)\[(.*?)\]\((.*?)\)/);
+          if (match) {
+            const currentLevel = (match[1].match(/\*/g) || []).length;
+            if (currentLevel === targetParentLevel + 1 && match[2] === insertBeforeTitle && match[3] === insertBeforeUrl) {
+              insertIndex = i;
+              break;
+            }
+            if (currentLevel <= targetParentLevel) break;
+          }
+        }
+      }
+      
+      if (insertIndex === -1) {
+        let i = parentIndex + 1;
+        while (i < targetLines.length) {
+          const line = targetLines[i];
+          const match = line.match(/^((?:\*\s+)+)\[/);
+          if (match) {
+            const currentLevel = (match[1].match(/\*/g) || []).length;
+            if (currentLevel > targetParentLevel) {
+              i++;
+              continue;
+            }
+          }
+          break;
+        }
+        insertIndex = i;
+      }
+    } else {
+      insertIndex = targetLines.length;
+      targetParentLevel = 0;
+    }
+  }
+
+  const levelDelta = (targetParentLevel + 1) - sourceLevel;
+  const adjustedBlock = blockLines.map(line => {
+    const match = line.match(/^((?:\*\s+)+)\[/);
+    if (match) {
+      const currentLevel = (match[1].match(/\*/g) || []).length;
+      const newLevel = Math.max(1, currentLevel + levelDelta);
+      const stars = '* '.repeat(newLevel).trim();
+      return line.replace(/^((?:\*\s+)+)\[/, `${stars} [`);
+    }
+    return line;
+  });
+
+  targetLines.splice(insertIndex, 0, ...adjustedBlock);
+  const newTargetContent = targetLines.join('\n');
+
+  return { newSourceContent, newTargetContent };
+}
+
+export function moveItemInMarkdown(
+  content: string,
+  itemTitle: string,
+  itemUrl: string | 'dir',
+  direction: 'up' | 'down'
+): string {
+  const lines = content.split('\n');
+  let startIndex = -1;
+  let targetLevel = 0;
+  let isDir = itemUrl === 'dir';
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const escapedTitle = itemTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedUrl = isDir ? 'dir' : itemUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`^((?:\\*\\s+)+)\\[${escapedTitle}\\]\\(${escapedUrl}\\)`);
+    if (regex.test(line)) {
+      startIndex = i;
+      targetLevel = (line.match(/\*/g) || []).length;
+      break;
+    }
+  }
+
+  if (startIndex === -1) return content;
+
+  let count = 1;
+  for (let i = startIndex + 1; i < lines.length; i++) {
+    const line = lines[i];
+    const match = line.match(/^((?:\*\s+)+)\[/);
+    if (match) {
+      const currentLevel = (match[1].match(/\*/g) || []).length;
+      if (currentLevel > targetLevel) {
+        count++;
+        continue;
+      }
+    } else if (line.trim() === '' || !line.trim().startsWith('*')) {
+      count++;
+      continue;
+    }
+    break;
+  }
+
+  const itemLines = lines.splice(startIndex, count);
+
+  if (direction === 'up') {
+    let prevIndex = -1;
+    for (let i = startIndex - 1; i >= 0; i--) {
+      const line = lines[i];
+      const match = line.match(/^((?:\*\s+)+)\[/);
+      if (match) {
+        const currentLevel = (match[1].match(/\*/g) || []).length;
+        if (currentLevel === targetLevel) {
+          prevIndex = i;
+          break;
+        }
+        if (currentLevel < targetLevel) break;
+      }
+    }
+    if (prevIndex !== -1) {
+      lines.splice(prevIndex, 0, ...itemLines);
+    } else {
+      lines.splice(startIndex, 0, ...itemLines);
+    }
+  } else if (direction === 'down') {
+    let nextIndex = -1;
+    let i = startIndex;
+    while (i < lines.length) {
+      const line = lines[i];
+      const match = line.match(/^((?:\*\s+)+)\[/);
+      if (match) {
+        const currentLevel = (match[1].match(/\*/g) || []).length;
+        if (currentLevel === targetLevel) {
+          let nextItemCount = 1;
+          for (let j = i + 1; j < lines.length; j++) {
+            const nextLine = lines[j];
+            const nextMatch = nextLine.match(/^((?:\*\s+)+)\[/);
+            if (nextMatch) {
+              const nextLevel = (nextMatch[1].match(/\*/g) || []).length;
+              if (nextLevel > targetLevel) {
+                nextItemCount++;
+                continue;
+              }
+            } else if (nextLine.trim() === '' || !nextLine.trim().startsWith('*')) {
+              nextItemCount++;
+              continue;
+            }
+            break;
+          }
+          nextIndex = i + nextItemCount;
+          break;
+        }
+        if (currentLevel < targetLevel) break;
+      }
+      i++;
+    }
+    if (nextIndex !== -1) {
+      lines.splice(nextIndex, 0, ...itemLines);
+    } else {
+      lines.splice(startIndex, 0, ...itemLines);
+    }
+  }
+
   return lines.join('\n');
 }

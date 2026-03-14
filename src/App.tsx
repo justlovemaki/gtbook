@@ -49,7 +49,7 @@ function App() {
     try {
       const github = new GitHubService(config);
       const data = await github.fetchFiles(force);
-      setFiles(data);
+      setFiles(data, true);
       setLastFetched(Date.now());
     } catch (err: any) {
       console.error(err);
@@ -114,6 +114,7 @@ function App() {
           <Settings 
             isOpen={isSettingsOpen} 
             onClose={() => setIsSettingsOpen(false)} 
+            onRefresh={() => loadData(true)}
           />
         </Suspense>
       )}

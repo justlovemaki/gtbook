@@ -86,30 +86,41 @@ export class GitHubService {
     };
   }
 
-  async updateFile(file: FavoriteFile, newContent: string): Promise<string> {
+  async updateFile(file: FavoriteFile, newContent: string, force: boolean = false): Promise<string> {
     const path = `/repos/${this.config.owner}/${this.config.repo}/contents/${file.path}`;
     
-    // 获取线上最新的 SHA 进行冲突检测
-    const latest = await this.getFileRawContent(file.path);
-    if (latest.sha !== file.sha) {
-      throw new Error("CONFLICT");
-    }
-
     // 使用更现代且支持 UTF-8 的编码方式
-    const base64Content = btoa(
-      Array.from(new TextEncoder().encode(newContent), byte => String.fromCharCode(byte)).join('')
+    const encodeContent = (text: string) => btoa(
+      Array.from(new TextEncoder().encode(text), byte => String.fromCharCode(byte)).join('')
     );
 
-    const data = await this.request(path, {
-      method: 'PUT',
-      body: JSON.stringify({
-        message: `Update ${file.filename} via gtbook`,
-        content: base64Content,
-        sha: file.sha,
-      }),
-    });
+    const tryUpdate = async (sha: string) => {
+      return await this.request(path, {
+        method: 'PUT',
+        body: JSON.stringify({
+          message: `Update ${file.filename} via gtbook`,
+          content: encodeContent(newContent),
+          sha: sha,
+        }),
+      });
+    };
 
-    return data.content?.sha || '';
+    try {
+      // First attempt with the provided SHA
+      const data = await tryUpdate(file.sha);
+      return data.content?.sha || '';
+    } catch (err: any) {
+      // If it's a conflict (409) or we are forcing, try to get the latest SHA and retry
+      const isConflict = err.message.toLowerCase().includes('conflict') || err.message.includes('409') || err.message.includes('sha');
+      
+      if (isConflict || force) {
+        // Fetch absolute latest from server to resolve the conflict
+        const latest = await this.getFileRawContent(file.path);
+        const data = await tryUpdate(latest.sha);
+        return data.content?.sha || '';
+      }
+      throw err;
+    }
   }
 
   async fetchFileByPath(path: string): Promise<FavoriteFile> {

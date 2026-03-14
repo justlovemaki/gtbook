@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/useStore';
 import { toast } from '../store/useToast';
@@ -40,24 +40,34 @@ export const FileNav: React.FC<{
     pendingChanges,
     clearPendingChanges 
   } = useStore();
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const handleSync = async () => {
     if (!config || pendingChanges.length === 0) return;
+    setIsSyncing(true);
     toast.info(t('sync.syncing'));
     try {
       const github = new GitHubService(config);
+      let currentFiles = [...files];
+
       for (const change of pendingChanges) {
-        const file = files.find(f => f.path === change.path);
+        const file = currentFiles.find(f => f.path === change.path);
         if (file) {
-          await github.updateFile({ ...file, sha: change.sha }, change.content);
+          // Use force: true to automatically resolve SHA conflicts during batch sync
+          const newSha = await github.updateFile({ ...file }, change.content, true);
+          currentFiles = currentFiles.map(f => f.path === file.path ? { ...f, sha: newSha } : f);
         }
       }
+      
+      useStore.getState().setFiles(currentFiles, true);
       clearPendingChanges();
       onRefresh();
       toast.success(t('sync.success'));
     } catch (err: any) {
       const msg = err.message === "CONFLICT" ? t('sync.conflict') : err.message;
       toast.error(t('sync.failed') + ": " + msg);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -187,10 +197,12 @@ export const FileNav: React.FC<{
           {pendingChanges.length > 0 && (
             <button 
               onClick={handleSync}
-              className="p-1 hover:bg-background rounded text-amber-500 animate-pulse transition-colors"
+              disabled={isSyncing}
+              className="p-1 hover:bg-background rounded text-amber-500 animate-pulse transition-colors flex items-center gap-1"
               title={t('sync.offlineSyncButton')}
             >
-              <CloudUpload className="w-3.5 h-3.5" />
+              <CloudUpload className={clsx("w-3.5 h-3.5", isSyncing && "animate-spin")} />
+              <span className="text-[10px] font-black">{pendingChanges.length}</span>
             </button>
           )}
         </div>

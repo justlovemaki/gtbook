@@ -18,6 +18,11 @@ i18n
       },
     },
     fallbackLng: 'en',
+    detection: {
+      order: ['localStorage', 'cookie'], // 移除 navigator，确保首次访问不随浏览器
+      caches: ['localStorage'],
+    },
+    load: 'languageOnly',
     interpolation: {
       escapeValue: false,
     },

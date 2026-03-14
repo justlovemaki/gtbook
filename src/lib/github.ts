@@ -49,24 +49,26 @@ export class GitHubService {
       .filter((f: any) => f.name.endsWith('.md'))
       .sort((a: any, b: any) => a.name.localeCompare(b.name));
 
-    const files: FavoriteFile[] = [];
-
-    for (const file of mdFiles) {
+    // 并发获取所有文件内容
+    return Promise.all(mdFiles.map(async (file: any) => {
       const fileData = await this.request(`/repos/${this.config.owner}/${this.config.repo}/contents/${file.path}`, {}, forceRefresh);
 
       if (fileData.content) {
-        const content = decodeURIComponent(escape(atob(fileData.content.replace(/\n/g, ''))));
-        files.push({
+        // 使用更现代且支持 UTF-8 的解码方式
+        const content = new TextDecoder().decode(
+          Uint8Array.from(atob(fileData.content.replace(/\n/g, '')), c => c.charCodeAt(0))
+        );
+        
+        return {
           filename: file.name,
           path: file.path,
           content,
           sha: fileData.sha,
           tree: parseMarkdown(content),
-        });
+        };
       }
-    }
-
-    return files;
+      throw new Error(`Failed to load content for ${file.name}`);
+    }));
   }
 
   async getFileRawContent(path: string): Promise<{ content: string, sha: string }> {
@@ -74,19 +76,35 @@ export class GitHubService {
     const fileData = await this.request(`/repos/${this.config.owner}/${this.config.repo}/contents/${path}`, {}, true);
     if (!fileData.content) throw new Error("No content found");
     
+    const content = new TextDecoder().decode(
+      Uint8Array.from(atob(fileData.content.replace(/\n/g, '')), c => c.charCodeAt(0))
+    );
+
     return {
-      content: decodeURIComponent(escape(atob(fileData.content.replace(/\n/g, '')))),
+      content,
       sha: fileData.sha
     };
   }
 
   async updateFile(file: FavoriteFile, newContent: string): Promise<string> {
     const path = `/repos/${this.config.owner}/${this.config.repo}/contents/${file.path}`;
+    
+    // 获取线上最新的 SHA 进行冲突检测
+    const latest = await this.getFileRawContent(file.path);
+    if (latest.sha !== file.sha) {
+      throw new Error("CONFLICT");
+    }
+
+    // 使用更现代且支持 UTF-8 的编码方式
+    const base64Content = btoa(
+      Array.from(new TextEncoder().encode(newContent), byte => String.fromCharCode(byte)).join('')
+    );
+
     const data = await this.request(path, {
       method: 'PUT',
       body: JSON.stringify({
         message: `Update ${file.filename} via MGR`,
-        content: btoa(unescape(encodeURIComponent(newContent))),
+        content: base64Content,
         sha: file.sha,
       }),
     });
@@ -98,7 +116,10 @@ export class GitHubService {
     const fileData = await this.request(`/repos/${this.config.owner}/${this.config.repo}/contents/${path}`, {}, true);
     if (!fileData.content) throw new Error("No content found");
     
-    const content = decodeURIComponent(escape(atob(fileData.content.replace(/\n/g, ''))));
+    const content = new TextDecoder().decode(
+      Uint8Array.from(atob(fileData.content.replace(/\n/g, '')), c => c.charCodeAt(0))
+    );
+
     return {
       filename: fileData.name,
       path: fileData.path,
@@ -140,11 +161,16 @@ export class GitHubService {
     
     // 1. Create new file with old content
     const createPath = `/repos/${this.config.owner}/${this.config.repo}/contents/${newPath}`;
+    
+    const base64Content = btoa(
+      Array.from(new TextEncoder().encode(file.content), byte => String.fromCharCode(byte)).join('')
+    );
+
     await this.request(createPath, {
       method: 'PUT',
       body: JSON.stringify({
         message: `Rename ${file.filename} to ${newFilename} via MGR`,
-        content: btoa(unescape(encodeURIComponent(file.content))),
+        content: base64Content,
       }),
     });
 

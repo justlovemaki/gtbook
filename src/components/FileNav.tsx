@@ -1,5 +1,7 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/useStore';
+import { toast } from '../store/useToast';
 import { 
   FileText, 
   Settings as SettingsIcon, 
@@ -9,16 +11,21 @@ import {
   Edit2, 
   Trash2, 
   LayoutDashboard, 
-  BookOpen 
+  BookOpen,
+  CloudUpload,
+  Sparkles
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { FavoriteFile } from '../lib/types';
 import { GitHubService } from '../lib/github';
+import { parseMarkdown } from '../lib/markdown';
+import { safeExtractContent, repairMarkdownFormat } from '../lib/ai';
 
 export const FileNav: React.FC<{ 
   onOpenSettings: () => void, 
   onRefresh: () => void 
 }> = ({ onOpenSettings, onRefresh }) => {
+  const { t } = useTranslation();
   const { 
     files, 
     activeFileIndex, 
@@ -29,49 +36,129 @@ export const FileNav: React.FC<{
     removeFile, 
     updateFile, 
     viewMode, 
-    setViewMode 
+    setViewMode,
+    pendingChanges,
+    clearPendingChanges 
   } = useStore();
+
+  const handleSync = async () => {
+    if (!config || pendingChanges.length === 0) return;
+    toast.info(t('sync.syncing'));
+    try {
+      const github = new GitHubService(config);
+      for (const change of pendingChanges) {
+        const file = files.find(f => f.path === change.path);
+        if (file) {
+          await github.updateFile({ ...file, sha: change.sha }, change.content);
+        }
+      }
+      clearPendingChanges();
+      onRefresh();
+      toast.success(t('sync.success'));
+    } catch (err: any) {
+      const msg = err.message === "CONFLICT" ? t('sync.conflict') : err.message;
+      toast.error(t('sync.failed') + ": " + msg);
+    }
+  };
 
   const handleAddFile = async () => {
     if (!config) return;
-    const filename = window.prompt("Enter new filename (needs .md suffix):", "01-new-category.md");
+    const filename = window.prompt(t('fileNav.enterNewFilename'), "01-new-category.md");
     if (!filename) return;
 
     try {
       const github = new GitHubService(config);
       const newFile = await github.createFile(filename);
       addFile(newFile);
+      toast.success(t('fileNav.createSuccess'));
     } catch (err: any) {
-      alert("Create failed: " + err.message);
+      toast.error(t('fileNav.createFailed'), err.message);
+    }
+  };
+
+  const handleRefactor = async (file: FavoriteFile) => {
+    if (!config || !window.confirm(t('ai.refactorConfirm'))) return;
+    toast.info(t('ai.refactoring'));
+    
+    try {
+      const github = new GitHubService(config);
+      // Get latest content
+      const { content: currentRaw, sha: latestSha } = await github.getFileRawContent(file.path);
+      
+      const prompt = `You are a professional information architect. 
+      Refactor this Markdown bookmark list into a more logical nested structure.
+      
+      IMPORTANT FORMAT RULES:
+      1. Use asterisks (*) to indicate levels. 
+      2. Level 1: "* [Title](url)"
+      3. Level 2: "* * [Title](url)" (Two asterisks with space in between)
+      4. Level 3: "* * * [Title](url)"
+      5. Folders MUST have the "(dir)" suffix: "* [Folder Name](dir)"
+      6. DO NOT use spaces for indentation. Use only the asterisk pattern.
+      7. Keep ALL original links.
+      
+      Example of valid structure:
+      * [Category 1](dir)
+      * * [Sub Item](https://link.com)
+      * [Direct Link](https://link2.com)
+      
+      Markdown to refactor:
+      ${currentRaw}`;
+
+      const baseUrl = (config.openaiBaseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.openaiKey}` },
+        body: JSON.stringify({
+          model: config.openaiModel || "gpt-3.5-turbo",
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+
+      const data = await response.json();
+      let newMarkdown = safeExtractContent(data.choices[0].message.content);
+      
+      if (!newMarkdown) throw new Error("AI returned empty content");
+
+      // 自动修复格式：如果 AI 使用了空格缩进，将其转换为项目标准的星号缩进
+      newMarkdown = repairMarkdownFormat(newMarkdown);
+
+      const newSha = await github.updateFile({ ...file, sha: latestSha }, newMarkdown);
+      updateFile(file.path, { content: newMarkdown, sha: newSha, tree: parseMarkdown(newMarkdown) });
+      toast.success(t('common.success'));
+    } catch (err: any) {
+      toast.error("Refactor failed", err.message);
     }
   };
 
   const handleRenameFile = async (e: React.MouseEvent, file: FavoriteFile) => {
     e.stopPropagation();
     if (!config) return;
-    const newFilename = window.prompt("Enter new filename:", file.filename);
+    const newFilename = window.prompt(t('fileNav.enterNewName'), file.filename);
     if (!newFilename || newFilename === file.filename) return;
 
     try {
       const github = new GitHubService(config);
       const updatedFile = await github.renameFile(file, newFilename);
       updateFile(file.path, updatedFile);
+      toast.success(t('fileNav.renameSuccess'));
     } catch (err: any) {
-      alert("Rename failed: " + err.message);
+      toast.error(t('fileNav.renameFailed'), err.message);
     }
   };
 
   const handleDeleteFile = async (e: React.MouseEvent, file: FavoriteFile) => {
     e.stopPropagation();
     if (!config) return;
-    if (!window.confirm(`Are you sure you want to permanently delete category file "${file.filename}"?`)) return;
+    if (!window.confirm(t('fileNav.confirmDelete', { name: file.filename }))) return;
 
     try {
       const github = new GitHubService(config);
       await github.deleteFile(file);
       removeFile(file.path);
+      toast.success(t('fileNav.deleteSuccess'));
     } catch (err: any) {
-      alert("Delete failed: " + err.message);
+      toast.error(t('fileNav.deleteFailed'), err.message);
     }
   };
 
@@ -85,7 +172,7 @@ export const FileNav: React.FC<{
           <button 
             onClick={handleAddFile}
             className="p-1 hover:bg-background rounded text-muted-foreground hover:text-primary transition-colors"
-            title="Add Category"
+            title={t('fileNav.addCategory')}
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
@@ -93,10 +180,19 @@ export const FileNav: React.FC<{
             onClick={onRefresh}
             disabled={isLoading}
             className="p-1 hover:bg-background rounded text-muted-foreground transition-colors"
-            title="Refresh All"
+            title={t('fileNav.refreshAll')}
           >
             <RefreshCw className={clsx("w-3.5 h-3.5", isLoading && "animate-spin")} />
           </button>
+          {pendingChanges.length > 0 && (
+            <button 
+              onClick={handleSync}
+              className="p-1 hover:bg-background rounded text-amber-500 animate-pulse transition-colors"
+              title={t('sync.offlineSyncButton')}
+            >
+              <CloudUpload className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
       
@@ -121,14 +217,32 @@ export const FileNav: React.FC<{
             
             <div className="hidden group-hover:flex items-center gap-0.5 ml-1 shrink-0">
               <button 
+                onClick={(e) => { e.stopPropagation(); handleRefactor(file); }}
+                className={clsx(
+                  "p-1 rounded transition-colors",
+                  activeFileIndex === index 
+                    ? "hover:bg-white/20 text-white" 
+                    : "hover:bg-black/10 text-primary"
+                )}
+                title={t('ai.refactorMode')}
+              >
+                <Sparkles className="w-2.5 h-2.5" />
+              </button>
+              <button 
                 onClick={(e) => handleRenameFile(e, file)}
-                className="p-1 hover:bg-black/10 rounded transition-colors"
+                className={clsx(
+                  "p-1 rounded transition-colors",
+                  activeFileIndex === index ? "hover:bg-white/20 text-white" : "hover:bg-black/10"
+                )}
               >
                 <Edit2 className="w-2.5 h-2.5" />
               </button>
               <button 
                 onClick={(e) => handleDeleteFile(e, file)}
-                className="p-1 hover:bg-black/10 rounded transition-colors hover:text-destructive"
+                className={clsx(
+                  "p-1 rounded transition-colors",
+                  activeFileIndex === index ? "hover:bg-white/20 text-white" : "hover:bg-black/10 hover:text-destructive"
+                )}
               >
                 <Trash2 className="w-2.5 h-2.5" />
               </button>
@@ -141,7 +255,7 @@ export const FileNav: React.FC<{
         <button
           onClick={() => setViewMode(viewMode === 'reader' ? 'navigation' : 'reader')}
           className="w-full flex items-center justify-start gap-2 px-2 py-2 text-primary hover:bg-primary/10 rounded-md transition-colors font-semibold"
-          title={viewMode === 'reader' ? "Switch to Navigation Mode" : "Switch to Reader Mode"}
+          title={viewMode === 'reader' ? t('fileNav.navigation') : t('fileNav.reader')}
         >
           {viewMode === 'reader' ? (
             <LayoutDashboard className="w-4 h-4 shrink-0" />
@@ -149,7 +263,7 @@ export const FileNav: React.FC<{
             <BookOpen className="w-4 h-4 shrink-0" />
           )}
           <span className="text-xs block">
-            {viewMode === 'reader' ? "Navigation" : "Reader"}
+            {viewMode === 'reader' ? t('fileNav.navigation') : t('fileNav.reader')}
           </span>
         </button>
         
@@ -158,7 +272,7 @@ export const FileNav: React.FC<{
           className="w-full flex items-center justify-start gap-2 px-2 py-2 text-muted-foreground hover:bg-muted rounded-md transition-colors"
         >
           <SettingsIcon className="w-4 h-4 shrink-0" />
-          <span className="text-xs block">Settings</span>
+          <span className="text-xs block">{t('common.settings')}</span>
         </button>
       </div>
     </div>

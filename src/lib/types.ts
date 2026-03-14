@@ -27,4 +27,5 @@ export interface AppConfig {
   path: string;
   openaiKey: string;
   openaiBaseUrl?: string;
+  openaiModel?: string;
 }

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/useStore';
 import { 
   Globe, 
@@ -31,6 +32,7 @@ const NavBookmark: React.FC<{ item: Bookmark }> = ({ item }) => {
       href={item.url}
       target="_blank"
       rel="noopener noreferrer"
+      title={item.title}
       className="group flex items-center justify-between p-4 rounded-2xl bg-card border hover:border-primary/30 hover:shadow-lg transition-all overflow-hidden h-full"
     >
       <div className="flex flex-col min-w-0 flex-1 mr-2">
@@ -49,9 +51,11 @@ const NavBookmark: React.FC<{ item: Bookmark }> = ({ item }) => {
 };
 
 const NavFolderItem: React.FC<{ item: Directory; onClick: () => void }> = ({ item, onClick }) => {
+  const { t } = useTranslation();
   return (
     <div 
       onClick={onClick}
+      title={item.title}
       className="group flex items-center justify-between p-4 rounded-2xl bg-muted/30 border border-transparent hover:border-primary/20 hover:bg-muted/50 cursor-pointer select-none transition-all h-full"
     >
       <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -61,7 +65,7 @@ const NavFolderItem: React.FC<{ item: Directory; onClick: () => void }> = ({ ite
         <div className="flex flex-col min-w-0">
           <span className="text-sm font-black truncate leading-tight">{item.title}</span>
           <span className="text-[10px] text-muted-foreground opacity-60 mt-0.5 font-bold uppercase tracking-wider">
-            {item.children.length} items
+            {item.children.length} {t('nav.items')}
           </span>
         </div>
       </div>
@@ -71,6 +75,7 @@ const NavFolderItem: React.FC<{ item: Directory; onClick: () => void }> = ({ ite
 };
 
 const Breadcrumbs: React.FC<{ path: string[]; onNavigate: (index: number) => void }> = ({ path, onNavigate }) => {
+  const { t } = useTranslation();
   return (
     <nav className="flex items-center flex-wrap gap-1 text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-6 bg-muted/20 p-2 rounded-xl border border-border/30 w-fit">
       <button 
@@ -78,7 +83,7 @@ const Breadcrumbs: React.FC<{ path: string[]; onNavigate: (index: number) => voi
         className="flex items-center gap-1.5 px-2 py-1 hover:text-primary transition-colors rounded-lg hover:bg-background"
       >
         <Home className="w-3 h-3" />
-        <span>ROOT</span>
+        <span>{t('nav.root')}</span>
       </button>
       
       {path.map((name, index) => (
@@ -100,6 +105,7 @@ const Breadcrumbs: React.FC<{ path: string[]; onNavigate: (index: number) => voi
 };
 
 const FileCard: React.FC<{ file: FavoriteFile }> = ({ file }) => {
+  const { t } = useTranslation();
   const [navStack, setNavStack] = useState<Directory[]>([]);
   const cardRef = useRef<HTMLDivElement>(null);
   const breadcrumbRef = useRef<HTMLDivElement>(null);
@@ -147,7 +153,7 @@ const FileCard: React.FC<{ file: FavoriteFile }> = ({ file }) => {
               {file.filename.replace(/^\d+-/, '').replace('.md', '')}
             </h2>
             <p className="text-[10px] font-black text-primary/40 tracking-[0.2em] uppercase mt-0.5">
-              Source: {file.filename}
+              {t('nav.source')}: {file.filename}
             </p>
           </div>
         </div>
@@ -182,7 +188,7 @@ const FileCard: React.FC<{ file: FavoriteFile }> = ({ file }) => {
           ))}
           {currentLevel.length === 0 && (
             <div className="col-span-full py-12 text-center border-2 border-dashed rounded-3xl opacity-30 italic text-sm">
-              This folder is empty
+              {t('nav.folderEmpty')}
             </div>
           )}
         </motion.div>
@@ -197,6 +203,7 @@ export const NavigationMode: React.FC<{
   onOpenSettings: () => void; 
   onRefresh: () => void 
 }> = ({ onOpenSettings, onRefresh }) => {
+  const { t } = useTranslation();
   const { files, isLoading, setViewMode } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -229,7 +236,7 @@ export const NavigationMode: React.FC<{
           <div className="absolute inset-0 rounded-full border-4 border-primary/10"></div>
           <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
         </div>
-        <span className="mt-6 text-sm font-bold text-primary tracking-widest uppercase animate-pulse">Accessing Favorites...</span>
+        <span className="mt-6 text-sm font-bold text-primary tracking-widest uppercase animate-pulse">{t('nav.accessingFavorites')}</span>
       </div>
     );
   }
@@ -243,19 +250,19 @@ export const NavigationMode: React.FC<{
           className="flex items-center gap-2 px-4 py-2 bg-background/80 backdrop-blur border rounded-full shadow-lg hover:shadow-xl transition-all text-sm font-bold text-primary border-primary/20"
         >
           <BookOpen className="w-4 h-4" />
-          <span className="hidden sm:inline">Reader Mode</span>
+          <span className="hidden sm:inline">{t('nav.readerMode')}</span>
         </button>
         <button
           onClick={onRefresh}
           className="p-2.5 bg-background/80 backdrop-blur border rounded-full shadow-lg hover:shadow-xl transition-all text-muted-foreground hover:text-primary border-border"
-          title="Refresh All"
+          title={t('fileNav.refreshAll')}
         >
           <RefreshCw className="w-4 h-4" />
         </button>
         <button
           onClick={onOpenSettings}
           className="p-2.5 bg-background/80 backdrop-blur border rounded-full shadow-lg hover:shadow-xl transition-all text-muted-foreground hover:text-primary border-border"
-          title="Settings"
+          title={t('common.settings')}
         >
           <SettingsIcon className="w-4 h-4" />
         </button>
@@ -269,10 +276,10 @@ export const NavigationMode: React.FC<{
           </div>
           <h1 className="text-5xl md:text-8xl font-black tracking-tighter leading-[0.85] text-foreground">
             Digital<br />
-            <span className="text-primary opacity-90 italic">Navigator.</span>
+            <span className="text-primary opacity-90 italic">{t('nav.digitalNavigator')}</span>
           </h1>
           <p className="text-muted-foreground text-base font-medium max-w-md leading-relaxed opacity-70">
-            A high-fidelity gateway to your curated digital ecosystem. Precise, minimalist, and powered by GitHub.
+            {t('nav.gatewayDesc')}
           </p>
           
           <div className="pt-4 max-w-md">
@@ -280,7 +287,7 @@ export const NavigationMode: React.FC<{
               <Search className="absolute left-4 top-3.5 w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
               <input
                 type="text"
-                placeholder="Search all bookmarks..."
+                placeholder={t('nav.searchAll')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-12 pr-12 py-3.5 bg-card border rounded-2xl shadow-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
@@ -301,16 +308,16 @@ export const NavigationMode: React.FC<{
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex items-center justify-between px-2 border-b pb-4 border-border/30">
               <h2 className="text-xl font-black tracking-tight text-primary flex items-center gap-2">
-                Search Results
+                {t('nav.searchResults')}
                 <span className="text-xs bg-primary/10 px-2 py-0.5 rounded-full font-bold ml-2">
-                  {searchResults.length} Found
+                  {searchResults.length} {t('nav.found')}
                 </span>
               </h2>
             </div>
             
             {searchResults.length === 0 ? (
               <div className="py-20 text-center border-2 border-dashed rounded-[2rem] opacity-30 italic">
-                No bookmarks matched your search.
+                {t('nav.noMatchedSearch')}
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -339,7 +346,7 @@ export const NavigationMode: React.FC<{
         ) : files.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-32 border-2 border-dashed rounded-[3rem] bg-muted/5 opacity-50">
             <Globe className="w-16 h-16 mb-6 text-muted-foreground" />
-            <p className="font-bold text-muted-foreground tracking-tight uppercase text-xs tracking-widest">No data synchronized.</p>
+            <p className="font-bold text-muted-foreground tracking-tight uppercase text-xs tracking-widest">{t('nav.noDataSync')}</p>
           </div>
         ) : (
           <div className="space-y-32">

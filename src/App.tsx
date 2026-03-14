@@ -1,18 +1,37 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense, lazy } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FileNav } from './components/FileNav';
 import { BookmarkTree } from './components/BookmarkTree';
 import { ContentView } from './components/ContentView';
 import { NavigationMode } from './components/NavigationMode';
-import { Settings } from './components/Settings';
-import { AIAssistant } from './components/AIAssistant';
+import { ToastContainer } from './components/ToastContainer';
 import { useStore } from './store/useStore';
 import { GitHubService } from './lib/github';
-import { Github } from 'lucide-react';
+import { Github, Loader2 } from 'lucide-react';
 import { clsx } from 'clsx';
 
+const Settings = lazy(() => import('./components/Settings').then(m => ({ default: m.Settings })));
+const AIAssistant = lazy(() => import('./components/AIAssistant').then(m => ({ default: m.AIAssistant })));
+
 function App() {
-  const { config, setFiles, setLoading, setError, isLoading, files, setLastFetched, viewMode, mobileActivePane } = useStore();
-  const [isSettingsOpen, setIsSettingsOpen] = useState(!config);
+  const { t } = useTranslation();
+  const { config, setFiles, setLoading, setError, isLoading, files, setLastFetched, viewMode, theme, mobileActivePane, _hasHydrated } = useStore();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark', isDark);
+
+    if (theme === 'system') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleChange = (e: MediaQueryListEvent) => {
+        document.documentElement.classList.toggle('dark', e.matches);
+      };
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+  }, [theme]);
+
 
   useEffect(() => {
     const hasConfig = config?.githubToken && config?.owner && config?.repo;
@@ -34,7 +53,7 @@ function App() {
       setLastFetched(Date.now());
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Failed to fetch files');
+      setError(err.message || t('app.failedFetch'));
     } finally {
       setLoading(false);
     }
@@ -42,7 +61,11 @@ function App() {
 
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden relative">
-      {viewMode === 'reader' ? (
+      {!_hasHydrated ? (
+        <div className="flex-1 flex items-center justify-center bg-background">
+          <Loader2 className="w-10 h-10 animate-spin text-primary/20" />
+        </div>
+      ) : viewMode === 'reader' ? (
         <>
           {/* Main Layout for Reader Mode */}
           <div className="flex flex-1 h-full overflow-hidden">
@@ -84,30 +107,36 @@ function App() {
         </main>
       )}
 
-      <AIAssistant />
-      
-      <Settings 
-        isOpen={isSettingsOpen} 
-        onClose={() => setIsSettingsOpen(false)} 
-      />
+      <Suspense fallback={null}>
+      {_hasHydrated && (
+        <Suspense fallback={null}>
+          {viewMode === 'reader' && <AIAssistant />}
+          <Settings 
+            isOpen={isSettingsOpen} 
+            onClose={() => setIsSettingsOpen(false)} 
+          />
+        </Suspense>
+      )}
+      </Suspense>
+
+      <ToastContainer />
 
       {/* Initial State / Overlay */}
-      {!config && (
+      {_hasHydrated && !config && (
         <div className="fixed inset-0 z-[60] bg-background flex flex-col items-center justify-center p-6 text-center">
           <div className="max-w-md space-y-6">
             <div className="bg-primary/5 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-primary/10">
               <Github className="w-10 h-10 text-primary" />
             </div>
-            <h1 className="text-4xl font-bold tracking-tighter">MGR Reader</h1>
+            <h1 className="text-4xl font-bold tracking-tighter">{t('app.title')}</h1>
             <p className="text-muted-foreground">
-              A modern, minimalist favorites manager using GitHub as your backend. 
-              Purely client-side, secure, and AI-powered.
+              {t('app.description')}
             </p>
             <button
               onClick={() => setIsSettingsOpen(true)}
               className="bg-primary text-primary-foreground px-8 py-3 rounded-full font-semibold shadow-lg hover:opacity-90 transition-all transform hover:scale-105"
             >
-              Get Started
+              {t('app.getStarted')}
             </button>
           </div>
         </div>

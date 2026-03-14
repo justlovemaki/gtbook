@@ -1,24 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/useStore';
-import { Sparkles, Loader2, Send, Check, AlertCircle, Minimize2 } from 'lucide-react';
+import { Sparkles, Loader2, Check, Minimize2, Search, PlusCircle } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
 import { GitHubService } from '../lib/github';
 import { insertLinkToMarkdown, parseMarkdown } from '../lib/markdown';
+import { safeParseJSON } from '../lib/ai';
 import type { FavoriteFile, Bookmark, Directory } from '../lib/types';
 
+type AssistantMode = 'organize' | 'search';
+
 export const AIAssistant: React.FC = () => {
-  const { config, files, setFiles } = useStore();
+  const { t } = useTranslation();
+  const { config, files, setFiles, setSelectedUrl, setActiveFileIndex } = useStore();
   const [url, setUrl] = useState('');
+  const [query, setQuery] = useState('');
+  const [mode, setMode] = useState<AssistantMode>('organize');
   const [status, setStatus] = useState<'idle' | 'analyzing' | 'confirming' | 'success' | 'error'>('idle');
   const [suggestion, setSuggestion] = useState<{ file: string; dir: string; title: string; reason: string } | null>(null);
-  const [isMinimized, setIsMinimized] = useState(false);
-
-  // Default to minimized on mobile
-  useEffect(() => {
-    if (window.innerWidth < 768) {
-      setIsMinimized(true);
-    }
-  }, []);
+  const [searchResults, setSearchResults] = useState<{ title: string; url: string; fileIndex: number; reason: string }[]>([]);
+  const [isMinimized, setIsMinimized] = useState(true);
 
   if (!config) return null;
 
@@ -37,7 +39,7 @@ export const AIAssistant: React.FC = () => {
   const handleAnalyze = async () => {
     if (!config || !url) return;
     if (files.length === 0) {
-      alert("Please connect to GitHub repository and ensure Markdown files are loaded.");
+      alert(t('ai.connectGithub'));
       return;
     }
     setStatus('analyzing');
@@ -49,73 +51,120 @@ export const AIAssistant: React.FC = () => {
       }));
 
       const prompt = `You are a professional bookmark organizer assistant.
-You must categorize the link into the existing structure.
-
-### Optional file list (file must be selected from this list):
-${files.map(f => f.filename).join(', ')}
-
-### Directory structure within each file (dir must be a directory title or "root"):
-${JSON.stringify(fileContext, null, 2)}
-
-### Task:
 Analyze link: ${url}
-1. Select the most suitable 'file' from the provided file list.
-2. Select the most suitable 'dir' within that file (provide only the directory title, e.g., "Website", or "root" if it belongs to the root).
-3. Generate a concise 'title'.
-4. Give the 'reason' in English.
-
-IMPORTANT: The returned content must be strictly valid JSON format. If the reason contains double quotes, be sure to escape them with backslashes (e.g., \"content\").
-
-Return JSON format:
-{
-  "file": "must be a filename from the list",
-  "dir": "must be an existing directory title or root",
-  "title": "Webpage title",
-  "reason": "Recommendation reason"
-}`;
+Categorize it into one of these files: ${files.map(f => f.filename).join(', ')}
+Within the file, find a directory or return "root".
+Context: ${JSON.stringify(fileContext, null, 2)}
+Return JSON: { "file": "filename", "dir": "dir title or root", "title": "page title", "reason": "why in ${t('ai.reasonLanguage')}" }`;
 
       const baseUrl = (config.openaiBaseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
-      
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.openaiKey}`
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.openaiKey}` },
         body: JSON.stringify({
-          model: "gpt-3.5-turbo",
+          model: config.openaiModel || "gpt-3.5-turbo",
           messages: [{ role: "user", content: prompt }],
           response_format: { type: "json_object" }
         })
       });
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.statusText}`);
-      }
+      const data = await response.json();
+      const rawContent = data.choices[0].message.content || '{}';
+      setSuggestion(safeParseJSON(rawContent, null));
+      setStatus('confirming');
+    } catch (err) {
+      setStatus('error');
+    }
+  };
+
+  const handleAISearch = async () => {
+    if (!config || !query || files.length === 0) return;
+    setStatus('analyzing');
+    setSearchResults([]);
+
+    try {
+      const bookmarkMap = new Map<string, { title: string, url: string, fileIndex: number, path: string }>();
+      
+      // 构建给 AI 看的紧凑树状结构字符串
+      const filesContext = files.map((file, fIndex) => {
+        let fileText = `File: ${file.filename}\n`;
+        
+        const traverse = (items: (Bookmark | Directory)[], depth: number, path: string) => {
+          items.forEach(item => {
+            const indent = '  '.repeat(depth);
+            if ('children' in item) {
+              fileText += `${indent}- [Dir] ${item.title}\n`;
+              traverse(item.children, depth + 1, path ? `${path} > ${item.title}` : item.title);
+            } else {
+              const id = `b-${fIndex}-${Math.random().toString(36).slice(2, 7)}`; // 临时短ID
+              bookmarkMap.set(id, {
+                title: item.title,
+                url: item.url,
+                fileIndex: fIndex,
+                path: path || 'Root'
+              });
+              fileText += `${indent}- [ID:${id}] ${item.title}\n`;
+            }
+          });
+        };
+        
+        traverse(file.tree, 1, '');
+        return fileText;
+      }).join('\n');
+
+      const prompt = `You are a semantic search engine. User query: "${query}"
+
+User's Bookmarks Hierarchy (IDs and Titles only):
+${filesContext}
+
+Task:
+1. Analyze the query and find 3-5 most relevant bookmarks by their ID.
+2. Search logic: Match by title, folder context, or conceptual similarity.
+3. Return ONLY JSON.
+
+Return JSON format:
+{
+  "results": [
+    { "id": "string", "reason": "short sentence in ${t('ai.reasonLanguage')}" }
+  ]
+}`;
+
+      const baseUrl = (config.openaiBaseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.openaiKey}` },
+        body: JSON.stringify({
+          model: config.openaiModel || "gpt-3.5-turbo",
+          messages: [
+            { role: "system", content: "You are a professional assistant that returns ONLY JSON." },
+            { role: "user", content: prompt }
+          ],
+          response_format: { type: "json_object" }
+        })
+      });
 
       const data = await response.json();
-      let content = data.choices[0].message.content || '{}';
+      const aiResponse = safeParseJSON<{ results: any[] }>(data.choices[0].message.content, { results: [] });
       
-      // Clean up potential markdown formatting and handles malformed JSON from some LLMs
-      content = content.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
-      
-      // Attempt to fix common JSON errors like unescaped quotes in strings (heuristic)
-      // This is risky but helps with common LLM failure modes
-      try {
-        const result = JSON.parse(content);
-        setSuggestion(result);
-        setStatus('confirming');
-      } catch (e) {
-        console.error("JSON Parse failed, attempting cleanup:", e);
-        const cleanedContent = content.replace(/("reason":\s*")(.+?)("\s*})/s, (_match: string, p1: string, p2: string, p3: string) => {
-           return p1 + p2.replace(/"/g, '\\"') + p3;
-        });
-        const result = JSON.parse(cleanedContent);
-        setSuggestion(result);
-        setStatus('confirming');
+      const enrichedResults = (aiResponse.results || []).map((r: any) => {
+        const original = bookmarkMap.get(r.id);
+        return original ? { 
+          title: original.title, 
+          url: original.url, 
+          fileIndex: original.fileIndex, 
+          reason: r.reason 
+        } : null;
+      }).filter((item): item is { title: string; url: string; fileIndex: number; reason: string } => item !== null);
+
+      if (enrichedResults.length === 0) {
+        // 如果 ID 匹配失败（有时 AI 会幻觉 ID），尝试标题模糊匹配作为后备
+        console.warn("ID match failed, AI might have hallucinated IDs.");
       }
+
+      setSearchResults(enrichedResults);
+      setStatus('confirming');
     } catch (err) {
-      console.error(err);
+      console.error("AI Search Error:", err);
       setStatus('error');
     }
   };
@@ -123,136 +172,99 @@ Return JSON format:
   const handleConfirm = async () => {
     if (!config || !suggestion || !files.length) return;
     setStatus('analyzing');
-
     try {
       const fileIndex = files.findIndex((f: FavoriteFile) => f.filename === suggestion.file);
-      if (fileIndex === -1) throw new Error("Target file not found");
-
       const targetFile = files[fileIndex];
       const github = new GitHubService(config);
-      
-      // 1. Get the latest content of the source file to ensure not overwriting others' changes and preserving the original format
-      const { content: currentRawContent, sha: latestSha } = await github.getFileRawContent(targetFile.path);
-
-      // 2. Insert the new line at the end of the specified level, preserving all non-link lines of the original file
-      const updatedRawContent = insertLinkToMarkdown(
-        currentRawContent,
-        suggestion.dir,
-        suggestion.title,
-        url
-      );
-
-      // 3. Submit update to GitHub
-      const newSha = await github.updateFile({ ...targetFile, sha: latestSha }, updatedRawContent);
-
-      // 4. Update local state (re-parse to reflect UI changes)
+      const { content: currentRaw, sha: latestSha } = await github.getFileRawContent(targetFile.path);
+      const updatedRaw = insertLinkToMarkdown(currentRaw, suggestion.dir, suggestion.title, url);
+      const newSha = await github.updateFile({ ...targetFile, sha: latestSha }, updatedRaw);
       const updatedFiles = [...files];
-      updatedFiles[fileIndex] = {
-        ...targetFile,
-        content: updatedRawContent,
-        sha: newSha,
-        tree: parseMarkdown(updatedRawContent)
-      };
-      
+      updatedFiles[fileIndex] = { ...targetFile, content: updatedRaw, sha: newSha, tree: parseMarkdown(updatedRaw) };
       setFiles(updatedFiles);
       setStatus('success');
       setUrl('');
       setTimeout(() => setStatus('idle'), 3000);
-    } catch (err: any) {
-      console.error(err);
-      alert(`Save failed: ${err.message}`);
+    } catch (err) {
       setStatus('error');
     }
   };
 
   return (
     <div className="fixed bottom-6 right-6 z-40">
-      <div className={clsx(
-        "bg-card border rounded-2xl shadow-xl transition-all duration-300 overflow-hidden",
-        isMinimized ? "w-12 h-12 rounded-full cursor-pointer hover:shadow-2xl hover:scale-110" : "p-4 w-80 shadow-2xl"
-      )}
-      onClick={() => isMinimized && setIsMinimized(false)}
+      <motion.div
+        animate={{ width: isMinimized ? 48 : 340, height: isMinimized ? 48 : "auto", borderRadius: isMinimized ? 24 : 16 }}
+        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+        className={clsx("bg-card border shadow-2xl overflow-hidden flex flex-col", isMinimized ? "cursor-pointer" : "p-4")}
+        onClick={() => isMinimized && setIsMinimized(false)}
       >
-        <div className={clsx(
-          "flex items-center justify-between mb-4",
-          isMinimized ? "h-full w-full justify-center mb-0" : ""
-        )}>
-          <div className="flex items-center gap-2">
+        <div className={clsx("flex items-center justify-between shrink-0", isMinimized ? "h-full w-full" : "mb-4")}>
+          <div className={clsx("flex items-center gap-2", isMinimized ? "w-full justify-center" : "")}>
             <Sparkles className={clsx("text-primary", isMinimized ? "w-6 h-6" : "w-4 h-4")} />
-            {!isMinimized && <h3 className="text-sm font-semibold">AI Organizer</h3>}
+            {!isMinimized && (
+              <div className="flex bg-muted p-0.5 rounded-lg border text-[10px] font-bold">
+                <button onClick={(e) => { e.stopPropagation(); setMode('organize'); setStatus('idle'); }} className={clsx("px-2 py-0.5 rounded", mode === 'organize' ? "bg-background text-primary" : "text-muted-foreground")}>{t('ai.organizeMode')}</button>
+                <button onClick={(e) => { e.stopPropagation(); setMode('search'); setStatus('idle'); }} className={clsx("px-2 py-0.5 rounded", mode === 'search' ? "bg-background text-primary" : "text-muted-foreground")}>{t('ai.searchMode')}</button>
+              </div>
+            )}
           </div>
-          {!isMinimized && (
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsMinimized(true);
-              }}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Minimize2 className="w-3.5 h-3.5" />
-            </button>
-          )}
+          {!isMinimized && <button onClick={(e) => { e.stopPropagation(); setIsMinimized(true); }} className="text-muted-foreground"><Minimize2 className="w-3.5 h-3.5" /></button>}
         </div>
 
         {!isMinimized && (
-          <>
-            {status === 'idle' || status === 'analyzing' || status === 'error' ? (
-              <div className="space-y-3">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Paste URL to organize..."
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    disabled={status === 'analyzing'}
-                    className="w-full pl-3 pr-10 py-2 bg-muted/50 border rounded-md text-sm outline-none focus:ring-1 focus:ring-primary"
-                  />
-                  <button
-                    onClick={handleAnalyze}
-                    disabled={status === 'analyzing' || !url || files.length === 0}
-                    className="absolute right-2 top-1.5 text-primary disabled:text-muted-foreground"
-                  >
-                    {status === 'analyzing' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                  </button>
-                </div>
-                {status === 'error' && (
-                  <div className="text-xs text-destructive flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" /> Failed to process URL.
+          <AnimatePresence mode="wait">
+            <motion.div key={mode + status} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              {mode === 'organize' ? (
+                status === 'confirming' ? (
+                  <div className="space-y-4 text-xs">
+                    <div className="bg-muted/50 p-3 rounded border border-dashed space-y-1">
+                      <p><strong>{t('ai.aiTitle')}:</strong> {suggestion?.title}</p>
+                      <p><strong>{t('ai.file')}:</strong> {suggestion?.file}</p>
+                      <p><strong>{t('ai.path')}:</strong> {suggestion?.dir}</p>
+                      <p className="italic opacity-70">"{suggestion?.reason}"</p>
+                    </div>
+                    <div className="flex gap-2"><button onClick={() => setStatus('idle')} className="flex-1 py-1.5 border rounded">{t('common.cancel')}</button><button onClick={handleConfirm} className="flex-1 py-1.5 bg-primary text-primary-foreground rounded">{t('common.save')}</button></div>
                   </div>
-                )}
-              </div>
-            ) : status === 'confirming' && suggestion ? (
-              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
-                <div className="bg-muted/50 p-3 rounded-md border border-dashed text-xs space-y-2">
-                  <p><strong>Title:</strong> {suggestion.title}</p>
-                  <p><strong>File:</strong> {suggestion.file}</p>
-                  <p><strong>Path:</strong> {suggestion.dir}</p>
-                  <p className="italic text-muted-foreground mt-1">"{suggestion.reason}"</p>
+                ) : status === 'success' ? (
+                  <div className="flex flex-col items-center py-4 text-green-600"><Check className="w-8 h-8 mb-2" /><span className="text-xs">{t('ai.success')}</span></div>
+                ) : (
+                  <div className="relative">
+                    <input type="text" placeholder={t('ai.pasteUrl')} value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()} className="w-full pl-3 pr-10 py-2 bg-muted/50 border rounded text-sm outline-none" />
+                    <button onClick={handleAnalyze} className="absolute right-2 top-1.5 text-primary">{status === 'analyzing' ? <Loader2 className="animate-spin w-5 h-5" /> : <PlusCircle className="w-5 h-5" />}</button>
+                  </div>
+                )
+              ) : (
+                <div className="space-y-3">
+                  <div className="relative">
+                    <input type="text" placeholder={t('ai.aiSearchPlaceholder')} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAISearch()} className="w-full pl-3 pr-10 py-2 bg-muted/50 border rounded text-sm outline-none" />
+                    <button onClick={handleAISearch} className="absolute right-2 top-1.5 text-primary">{status === 'analyzing' ? <Loader2 className="animate-spin w-5 h-5" /> : <Search className="w-5 h-5" />}</button>
+                  </div>
+                  {status === 'confirming' && (
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {searchResults.map((res, i) => (
+                        <div 
+                          key={i} 
+                          onClick={() => { 
+                            setActiveFileIndex(res.fileIndex); 
+                            setSelectedUrl(res.url); 
+                            // 关键：同步搜索词到全局，让左侧树自动定位和展开
+                            useStore.getState().setSearchQuery(res.title);
+                            if (window.innerWidth < 768) useStore.getState().setMobileActivePane('content'); 
+                          }} 
+                          className="p-2 rounded border bg-muted/30 hover:border-primary/30 cursor-pointer transition-all"
+                        >
+                          <div className="text-xs font-bold truncate">{res.title}</div>
+                          <div className="text-[10px] opacity-60 italic">"{res.reason}"</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setStatus('idle')}
-                    className="flex-1 py-1.5 border rounded-md text-xs hover:bg-muted"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleConfirm}
-                    className="flex-1 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-4 text-green-600 animate-in zoom-in">
-                <Check className="w-8 h-8 mb-2" />
-                <span className="text-xs font-medium">Added Successfully!</span>
-              </div>
-            )}
-          </>
+              )}
+            </motion.div>
+          </AnimatePresence>
         )}
-      </div>
+      </motion.div>
     </div>
   );
 };

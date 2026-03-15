@@ -14,7 +14,9 @@ import {
   BookOpen,
   CloudUpload,
   Sparkles,
-  X
+  X,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { FavoriteFile } from '../lib/types';
@@ -40,7 +42,9 @@ export const FileNav: React.FC<{
     setViewMode,
     pendingChanges,
     clearPendingChanges,
-    setMobileActivePane
+    setMobileActivePane,
+    theme,
+    setTheme
   } = useStore();
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -99,6 +103,7 @@ export const FileNav: React.FC<{
       
       const prompt = `You are a professional information architect. 
       Refactor this Markdown bookmark list into a more logical nested structure.
+      The output structure and any new categories should be in ${t('ai.reasonLanguage')}.
       
       IMPORTANT FORMAT RULES:
       1. Use asterisks (*) to indicate levels. 
@@ -298,13 +303,22 @@ export const FileNav: React.FC<{
           </button>
         )}
         
-        {import.meta.env.VITE_PUBLIC_MODE !== 'true' && (
+        {import.meta.env.VITE_PUBLIC_MODE !== 'true' ? (
           <button
             onClick={onOpenSettings}
             className="w-full flex items-center justify-start gap-2 px-2 py-2 text-muted-foreground hover:bg-muted rounded-md transition-colors"
           >
             <SettingsIcon className="w-4 h-4 shrink-0" />
             <span className="text-xs block">{t('common.settings')}</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="w-full flex items-center justify-start gap-2 px-2 py-2 text-muted-foreground hover:bg-muted rounded-md transition-colors"
+            title={theme === 'dark' ? t('settings.light') : t('settings.dark')}
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4 shrink-0" /> : <Moon className="w-4 h-4 shrink-0" />}
+            <span className="text-xs block">{theme === 'dark' ? t('settings.light') : t('settings.dark')}</span>
           </button>
         )}
       </div>

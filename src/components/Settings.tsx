@@ -299,11 +299,7 @@ export const Settings: React.FC<{
             <select
               value={i18n.resolvedLanguage}
               onChange={(e) => i18n.changeLanguage(e.target.value)}
-              disabled={!!import.meta.env.VITE_DEFAULT_LANG}
-              className={clsx(
-                "w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-primary outline-none appearance-none",
-                !!import.meta.env.VITE_DEFAULT_LANG ? "bg-muted text-muted-foreground cursor-not-allowed" : "bg-muted/50"
-              )}
+              className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-primary outline-none appearance-none bg-muted/50"
             >
               <option value="en">English</option>
               <option value="zh">简体中文</option>
@@ -314,17 +310,12 @@ export const Settings: React.FC<{
             <label className="text-sm font-medium flex items-center gap-2">
               {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />} {t('settings.theme')}
             </label>
-            <div className={clsx(
-              "flex p-1 rounded-md border",
-              !!import.meta.env.VITE_DEFAULT_THEME ? "bg-muted cursor-not-allowed opacity-80" : "bg-muted/50"
-            )}>
+            <div className="flex p-1 rounded-md border bg-muted/50">
               <button
                 onClick={() => setTheme('light')}
-                disabled={!!import.meta.env.VITE_DEFAULT_THEME}
                 className={clsx(
                   "flex-1 flex items-center justify-center gap-2 py-1.5 rounded text-xs font-medium transition-all",
-                  theme === 'light' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground",
-                  !!import.meta.env.VITE_DEFAULT_THEME && "cursor-not-allowed"
+                  theme === 'light' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <Sun className="w-3.5 h-3.5" />
@@ -332,11 +323,9 @@ export const Settings: React.FC<{
               </button>
               <button
                 onClick={() => setTheme('dark')}
-                disabled={!!import.meta.env.VITE_DEFAULT_THEME}
                 className={clsx(
                   "flex-1 flex items-center justify-center gap-2 py-1.5 rounded text-xs font-medium transition-all",
-                  theme === 'dark' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground",
-                  !!import.meta.env.VITE_DEFAULT_THEME && "cursor-not-allowed"
+                  theme === 'dark' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <Moon className="w-3.5 h-3.5" />
@@ -344,11 +333,9 @@ export const Settings: React.FC<{
               </button>
               <button
                 onClick={() => setTheme('system')}
-                disabled={!!import.meta.env.VITE_DEFAULT_THEME}
                 className={clsx(
                   "flex-1 flex items-center justify-center gap-2 py-1.5 rounded text-xs font-medium transition-all",
-                  theme === 'system' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground",
-                  !!import.meta.env.VITE_DEFAULT_THEME && "cursor-not-allowed"
+                  theme === 'system' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <Monitor className="w-3.5 h-3.5" />

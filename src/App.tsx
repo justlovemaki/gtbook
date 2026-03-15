@@ -15,7 +15,7 @@ const AIAssistant = lazy(() => import('./components/AIAssistant').then(m => ({ d
 
 function App() {
   const { t, i18n } = useTranslation();
-  const { config, setConfig, setFiles, setLoading, setError, isLoading, files, activeFileIndex, setLastFetched, viewMode, setViewMode, theme, setTheme, mobileActivePane, _hasHydrated } = useStore();
+  const { config, setConfig, setFiles, setLoading, setError, isLoading, files, activeFileIndex, setLastFetched, viewMode, setViewMode, theme, mobileActivePane, _hasHydrated } = useStore();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Initialize/Override config from ENV if available
@@ -73,20 +73,9 @@ function App() {
       if (hasChanged || (!config && mergedConfig.githubToken && mergedConfig.owner && mergedConfig.repo)) {
         setConfig(mergedConfig);
       }
-
-      // 2. Handle Default Theme
-      const envTheme = import.meta.env.VITE_DEFAULT_THEME;
-      if (envTheme && theme !== envTheme) {
-        setTheme(envTheme as 'light' | 'dark' | 'system');
-      }
-
-      // 3. Handle Default Language
-      const envLang = import.meta.env.VITE_DEFAULT_LANG;
-      if (envLang && i18n.language !== envLang) {
-        i18n.changeLanguage(envLang);
-      }
     }
-  }, [_hasHydrated, config, setConfig, theme, setTheme, i18n]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [_hasHydrated, config, setConfig]);
 
 
   useEffect(() => {

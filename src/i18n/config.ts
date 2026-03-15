@@ -17,9 +17,9 @@ i18n
         translation: zhTranslations,
       },
     },
-    fallbackLng: 'en',
+    fallbackLng: import.meta.env.VITE_DEFAULT_LANG || 'zh',
     detection: {
-      order: ['localStorage', 'cookie'], // 移除 navigator，确保首次访问不随浏览器
+      order: ['localStorage', 'navigator', 'cookie'],
       caches: ['localStorage'],
     },
     load: 'languageOnly',

@@ -14,7 +14,9 @@ import {
   X,
   FileText,
   CloudUpload,
-  ArrowUp
+  ArrowUp,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
@@ -212,7 +214,9 @@ export const NavigationMode: React.FC<{
     setViewMode, 
     pendingChanges, 
     config, 
-    clearPendingChanges 
+    clearPendingChanges,
+    theme,
+    setTheme
   } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
@@ -335,6 +339,15 @@ export const NavigationMode: React.FC<{
               <SettingsIcon className="w-4 h-4" />
             </button>
           </>
+        )}
+        {import.meta.env.VITE_PUBLIC_MODE === 'true' && (
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="p-2.5 bg-background/80 backdrop-blur border rounded-full shadow-lg hover:shadow-xl transition-all text-muted-foreground hover:text-primary border-border"
+            title={theme === 'dark' ? t('settings.light') : t('settings.dark')}
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
         )}
       </div>
 

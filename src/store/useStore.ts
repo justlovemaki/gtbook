@@ -67,7 +67,7 @@ export const useStore = create<AppState>()(
       readerMode: false,
       showSource: false,
       viewMode: 'navigation',
-      theme: 'system',
+      theme: (import.meta.env.VITE_DEFAULT_THEME as any) || 'system',
       mobileActivePane: 'files',
       searchQuery: '',
       _hasHydrated: false,

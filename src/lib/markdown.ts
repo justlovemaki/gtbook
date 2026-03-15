@@ -8,11 +8,15 @@ export function parseMarkdown(text: string): (Bookmark | Directory)[] {
   ];
 
   for (const line of lines) {
-    const match = line.match(/^((?:\*\s+)+)\[(.*?)\]\((.*?)\)/);
+    // Revised regex to support:
+    // 1. Different markers (*, -, +)
+    // 2. Extra spaces or tabs
+    // 3. Any text following the URL
+    const match = line.match(/^((?:\s*[*+-]\s*)+)\[(.*?)\]\((.*?)\)/);
     if (!match) continue;
 
-    const [, starGroup, title, content] = match;
-    const level = (starGroup.match(/\*/g) || []).length;
+    const [, markerGroup, title, content] = match;
+    const level = (markerGroup.match(/[*+-]/g) || []).length;
 
     while (stack.length > 1 && stack[stack.length - 1].level >= level) {
       stack.pop();
@@ -60,10 +64,10 @@ export function insertLinkToMarkdown(
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const match = line.match(/^((?:\*\s+)+)\[(.*?)\]\(dir\)/);
+    const match = line.match(/^((?:\s*[*+-]\s*)+)\[(.*?)\]\(dir\)/);
     if (match && match[2] === targetDir) {
       insertIndex = i + 1;
-      targetLevel = (match[1].match(/\*/g) || []).length;
+      targetLevel = (match[1].match(/[*+-]/g) || []).length;
       break;
     }
   }
@@ -76,9 +80,9 @@ export function insertLinkToMarkdown(
   let i = insertIndex;
   while (i < lines.length) {
     const line = lines[i];
-    const match = line.match(/^((?:\*\s+)+)\[/);
+    const match = line.match(/^((?:\s*[*+-]\s*)+)\[/);
     if (match) {
-      const currentLevel = (match[1].match(/\*/g) || []).length;
+      const currentLevel = (match[1].match(/[*+-]/g) || []).length;
       if (currentLevel > targetLevel) {
         i++;
         continue;
@@ -105,7 +109,7 @@ export function updateBookmarkInMarkdown(
     const line = lines[i];
     const escapedOldTitle = oldTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const escapedOldUrl = oldUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`^((?:\\*\\s+)+)\\[${escapedOldTitle}\\]\\(${escapedOldUrl}\\)`);
+    const regex = new RegExp(`^((?:\\s*[*+-]\\s*)+)\\[${escapedOldTitle}\\]\\(${escapedOldUrl}\\)`);
     
     if (regex.test(line)) {
       lines[i] = line.replace(`[${oldTitle}](${oldUrl})`, `[${newTitle}](${newUrl})`);
@@ -125,7 +129,7 @@ export function deleteFromMarkdown(
     const line = lines[i];
     const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const escapedUrl = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`^((?:\\*\\s+)+)\\[${escapedTitle}\\]\\(${escapedUrl}\\)`);
+    const regex = new RegExp(`^((?:\\s*[*+-]\\s*)+)\\[${escapedTitle}\\]\\(${escapedUrl}\\)`);
     
     if (regex.test(line)) {
       lines.splice(i, 1);
@@ -151,10 +155,10 @@ export function insertDirectoryToMarkdown(
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const match = line.match(/^((?:\*\s+)+)\[(.*?)\]\(dir\)/);
+    const match = line.match(/^((?:\s*[*+-]\s*)+)\[(.*?)\]\(dir\)/);
     if (match && match[2] === targetParentDir) {
       insertIndex = i + 1;
-      targetLevel = (match[1].match(/\*/g) || []).length;
+      targetLevel = (match[1].match(/[*+-]/g) || []).length;
       break;
     }
   }
@@ -167,9 +171,9 @@ export function insertDirectoryToMarkdown(
   let i = insertIndex;
   while (i < lines.length) {
     const line = lines[i];
-    const match = line.match(/^((?:\*\s+)+)\[/);
+    const match = line.match(/^((?:\s*[*+-]\s*)+)\[/);
     if (match) {
-      const currentLevel = (match[1].match(/\*/g) || []).length;
+      const currentLevel = (match[1].match(/[*+-]/g) || []).length;
       if (currentLevel > targetLevel) {
         i++;
         continue;
@@ -193,7 +197,7 @@ export function renameDirectoryInMarkdown(
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const escapedOldTitle = oldTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`^((?:\\*\\s+)+)\\[${escapedOldTitle}\\]\\(dir\\)`);
+    const regex = new RegExp(`^((?:\\s*[*+-]\\s*)+)\\[${escapedOldTitle}\\]\\(dir\\)`);
     
     if (regex.test(line)) {
       lines[i] = line.replace(`[${oldTitle}]`, `[${newTitle}]`);
@@ -214,11 +218,11 @@ export function deleteDirectoryFromMarkdown(
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`^((?:\\*\\s+)+)\\[${escapedTitle}\\]\\(dir\\)`);
+    const regex = new RegExp(`^((?:\\s*[*+-]\\s*)+)\\[${escapedTitle}\\]\\(dir\\)`);
     
     if (regex.test(line)) {
       startIndex = i;
-      targetLevel = (line.match(/\*/g) || []).length;
+      targetLevel = (line.match(/[*+-]/g) || []).length;
       break;
     }
   }
@@ -228,9 +232,9 @@ export function deleteDirectoryFromMarkdown(
   let countToRemove = 1;
   for (let i = startIndex + 1; i < lines.length; i++) {
     const line = lines[i];
-    const match = line.match(/^((?:\*\s+)+)\[/);
+    const match = line.match(/^((?:\s*[*+-]\s*)+)\[/);
     if (match) {
-      const currentLevel = (match[1].match(/\*/g) || []).length;
+      const currentLevel = (match[1].match(/[*+-]/g) || []).length;
       if (currentLevel > targetLevel) {
         countToRemove++;
         continue;
@@ -265,10 +269,10 @@ export function moveItemToFolderInMarkdown(
     const line = sourceLines[i];
     const escapedTitle = itemTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const escapedUrl = isDir ? 'dir' : itemUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`^((?:\\*\\s+)+)\\[${escapedTitle}\\]\\(${escapedUrl}\\)`);
+    const regex = new RegExp(`^((?:\\s*[*+-]\\s*)+)\\[${escapedTitle}\\]\\(${escapedUrl}\\)`);
     if (regex.test(line)) {
       startIndex = i;
-      sourceLevel = (line.match(/\*/g) || []).length;
+      sourceLevel = (line.match(/[*+-]/g) || []).length;
       break;
     }
   }
@@ -278,9 +282,9 @@ export function moveItemToFolderInMarkdown(
   let count = 1;
   for (let i = startIndex + 1; i < sourceLines.length; i++) {
     const line = sourceLines[i];
-    const match = line.match(/^((?:\*\s+)+)\[/);
+    const match = line.match(/^((?:\s*[*+-]\s*)+)\[/);
     if (match) {
-      const currentLevel = (match[1].match(/\*/g) || []).length;
+      const currentLevel = (match[1].match(/[*+-]/g) || []).length;
       if (currentLevel > sourceLevel) {
         count++;
         continue;
@@ -306,7 +310,7 @@ export function moveItemToFolderInMarkdown(
     if (insertBeforeTitle) {
       for (let i = 0; i < targetLines.length; i++) {
         const line = targetLines[i];
-        const match = line.match(/^((?:\*\s+)+)\[(.*?)\]\((.*?)\)/);
+        const match = line.match(/^((?:\s*[*+-]\s*)+)\[(.*?)\]\((.*?)\)/);
         if (match && match[2] === insertBeforeTitle && match[3] === insertBeforeUrl) {
           insertIndex = i;
           break;
@@ -318,10 +322,10 @@ export function moveItemToFolderInMarkdown(
     let parentIndex = -1;
     for (let i = 0; i < targetLines.length; i++) {
       const line = targetLines[i];
-      const match = line.match(/^((?:\*\s+)+)\[(.*?)\]\(dir\)/);
+      const match = line.match(/^((?:\s*[*+-]\s*)+)\[(.*?)\]\(dir\)/);
       if (match && match[2] === targetParentDir) {
         parentIndex = i;
-        targetParentLevel = (match[1].match(/\*/g) || []).length;
+        targetParentLevel = (match[1].match(/[*+-]/g) || []).length;
         break;
       }
     }
@@ -330,9 +334,9 @@ export function moveItemToFolderInMarkdown(
       if (insertBeforeTitle) {
         for (let i = parentIndex + 1; i < targetLines.length; i++) {
           const line = targetLines[i];
-          const match = line.match(/^((?:\*\s+)+)\[(.*?)\]\((.*?)\)/);
+          const match = line.match(/^((?:\s*[*+-]\s*)+)\[(.*?)\]\((.*?)\)/);
           if (match) {
-            const currentLevel = (match[1].match(/\*/g) || []).length;
+            const currentLevel = (match[1].match(/[*+-]/g) || []).length;
             if (currentLevel === targetParentLevel + 1 && match[2] === insertBeforeTitle && match[3] === insertBeforeUrl) {
               insertIndex = i;
               break;
@@ -346,9 +350,9 @@ export function moveItemToFolderInMarkdown(
         let i = parentIndex + 1;
         while (i < targetLines.length) {
           const line = targetLines[i];
-          const match = line.match(/^((?:\*\s+)+)\[/);
+          const match = line.match(/^((?:\s*[*+-]\s*)+)\[/);
           if (match) {
-            const currentLevel = (match[1].match(/\*/g) || []).length;
+            const currentLevel = (match[1].match(/[*+-]/g) || []).length;
             if (currentLevel > targetParentLevel) {
               i++;
               continue;
@@ -366,12 +370,12 @@ export function moveItemToFolderInMarkdown(
 
   const levelDelta = (targetParentLevel + 1) - sourceLevel;
   const adjustedBlock = blockLines.map(line => {
-    const match = line.match(/^((?:\*\s+)+)\[/);
+    const match = line.match(/^((?:\s*[*+-]\s*)+)\[/);
     if (match) {
-      const currentLevel = (match[1].match(/\*/g) || []).length;
+      const currentLevel = (match[1].match(/[*+-]/g) || []).length;
       const newLevel = Math.max(1, currentLevel + levelDelta);
       const stars = '* '.repeat(newLevel).trim();
-      return line.replace(/^((?:\*\s+)+)\[/, `${stars} [`);
+      return line.replace(/^((?:\s*[*+-]\s*)+)\[/, `${stars} [`);
     }
     return line;
   });
@@ -397,10 +401,10 @@ export function moveItemInMarkdown(
     const line = lines[i];
     const escapedTitle = itemTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const escapedUrl = isDir ? 'dir' : itemUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`^((?:\\*\\s+)+)\\[${escapedTitle}\\]\\(${escapedUrl}\\)`);
+    const regex = new RegExp(`^((?:\\s*[*+-]\\s*)+)\\[${escapedTitle}\\]\\(${escapedUrl}\\)`);
     if (regex.test(line)) {
       startIndex = i;
-      targetLevel = (line.match(/\*/g) || []).length;
+      targetLevel = (line.match(/[*+-]/g) || []).length;
       break;
     }
   }
@@ -410,9 +414,9 @@ export function moveItemInMarkdown(
   let count = 1;
   for (let i = startIndex + 1; i < lines.length; i++) {
     const line = lines[i];
-    const match = line.match(/^((?:\*\s+)+)\[/);
+    const match = line.match(/^((?:\s*[*+-]\s*)+)\[/);
     if (match) {
-      const currentLevel = (match[1].match(/\*/g) || []).length;
+      const currentLevel = (match[1].match(/[*+-]/g) || []).length;
       if (currentLevel > targetLevel) {
         count++;
         continue;
@@ -430,9 +434,9 @@ export function moveItemInMarkdown(
     let prevIndex = -1;
     for (let i = startIndex - 1; i >= 0; i--) {
       const line = lines[i];
-      const match = line.match(/^((?:\*\s+)+)\[/);
+      const match = line.match(/^((?:\s*[*+-]\s*)+)\[/);
       if (match) {
-        const currentLevel = (match[1].match(/\*/g) || []).length;
+        const currentLevel = (match[1].match(/[*+-]/g) || []).length;
         if (currentLevel === targetLevel) {
           prevIndex = i;
           break;
@@ -450,14 +454,14 @@ export function moveItemInMarkdown(
     let i = startIndex;
     while (i < lines.length) {
       const line = lines[i];
-      const match = line.match(/^((?:\*\s+)+)\[/);
+      const match = line.match(/^((?:\s*[*+-]\s*)+)\[/);
       if (match) {
-        const currentLevel = (match[1].match(/\*/g) || []).length;
+        const currentLevel = (match[1].match(/[*+-]/g) || []).length;
         if (currentLevel === targetLevel) {
           let nextItemCount = 1;
           for (let j = i + 1; j < lines.length; j++) {
             const nextLine = lines[j];
-            const nextMatch = nextLine.match(/^((?:\*\s+)+)\[/);
+            const nextMatch = nextLine.match(/^((?:\s*[*+-]\s*)+)\[/);
             if (nextMatch) {
               const nextLevel = (nextMatch[1].match(/\*/g) || []).length;
               if (nextLevel > targetLevel) {

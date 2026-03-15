@@ -101,26 +101,38 @@ export const FileNav: React.FC<{
       // Get latest content
       const { content: currentRaw, sha: latestSha } = await github.getFileRawContent(file.path);
       
-      const prompt = `You are a professional information architect. 
-      Refactor this Markdown bookmark list into a more logical nested structure.
-      The output structure and any new categories should be in ${t('ai.reasonLanguage')}.
-      
-      IMPORTANT FORMAT RULES:
-      1. Use asterisks (*) to indicate levels. 
-      2. Level 1: "* [Title](url)"
-      3. Level 2: "* * [Title](url)" (Two asterisks with space in between)
-      4. Level 3: "* * * [Title](url)"
-      5. Folders MUST have the "(dir)" suffix: "* [Folder Name](dir)"
-      6. DO NOT use spaces for indentation. Use only the asterisk pattern.
-      7. Keep ALL original links.
-      
-      Example of valid structure:
-      * [Category 1](dir)
-      * * [Sub Item](https://link.com)
-      * [Direct Link](https://link2.com)
-      
-      Markdown to refactor:
-      ${currentRaw}`;
+      const prompt = `### Role
+You are a professional Information Architect specializing in knowledge organization.
+
+### Task
+Refactor the provided Markdown bookmark list into a logical, hierarchical structure. 
+The output language for categories and structure MUST be: ${t('ai.reasonLanguage')}.
+
+### CRITICAL RULE: NO DATA LOSS
+1. You MUST PRESERVE EVERY SINGLE LINK from the original list.
+2. DO NOT summarize, merge, or omit any URLs.
+3. If a link doesn't fit into your new categories, place it in an "Others" or "Uncategorized" category.
+4. The total count of [Title](url) items in your output MUST MATCH the input count.
+
+### FORMAT RULES
+1. Use ONLY asterisks (*) for hierarchy levels. 
+2. Level 1: "* [Title](url)"
+3. Level 2: "* * [Title](url)" (Space between asterisks)
+4. Level 3: "* * * [Title](url)"
+5. Folders/Categories MUST use the "(dir)" suffix: "* [Category Name](dir)"
+6. NO SPACE INDENTATION. Use only the asterisk repetition pattern.
+7. Output ONLY the resulting Markdown, no conversational text.
+
+### Example of Valid Output
+* [Development Tools](dir)
+* * [GitHub](https://github.com)
+* * [Stack Overflow](https://stackoverflow.com)
+* [Reference](dir)
+* * [MDN Web Docs](https://developer.mozilla.org)
+* [Personal Blog](https://example.com)
+
+### Content to Refactor
+${currentRaw}`;
 
       const baseUrl = (config.openaiBaseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
       const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -133,12 +145,29 @@ export const FileNav: React.FC<{
       });
 
       const data = await response.json();
+      
+      if (data.choices[0].finish_reason === 'length') {
+        toast.error(t('ai.truncated'));
+        return;
+      }
+
       let newMarkdown = safeExtractContent(data.choices[0].message.content);
       
       if (!newMarkdown) throw new Error("AI returned empty content");
 
       // 自动修复格式：如果 AI 使用了空格缩进，将其转换为项目标准的星号缩进
       newMarkdown = repairMarkdownFormat(newMarkdown);
+
+      // 校验书签数量，防止 AI 遗漏
+      const linkRegex = /\[.*?\]\((?!dir\b).*?\)/g;
+      const oldCount = (currentRaw.match(linkRegex) || []).length;
+      const newCount = (newMarkdown.match(linkRegex) || []).length;
+
+      if (newCount < oldCount) {
+        if (!window.confirm(t('ai.lossWarning', { old: oldCount, new: newCount }))) {
+          return;
+        }
+      }
 
       const newSha = await github.updateFile({ ...file, sha: latestSha }, newMarkdown);
       updateFile(file.path, { content: newMarkdown, sha: newSha, tree: parseMarkdown(newMarkdown) });

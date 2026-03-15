@@ -123,7 +123,9 @@
     "aiSearchPlaceholder": "Ask AI about your bookmarks...",
     "refactorConfirm": "AI suggests refactoring this file structure. Apply?",
     "refactoring": "Refactoring structure...",
-    "noSearchResult": "AI found no relevant bookmarks"
+    "noSearchResult": "AI found no relevant bookmarks",
+    "lossWarning": "Detected fewer bookmarks after AI refactor (from {{old}} to {{new}}). Data loss might have occurred. Continue?",
+    "truncated": "AI response was truncated. Refactor cancelled. Please try a smaller file or a more advanced model."
   },
   "content": {
     "selectBookmark": "Select a bookmark to read",

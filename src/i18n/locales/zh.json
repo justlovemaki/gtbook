@@ -123,7 +123,9 @@
     "aiSearchPlaceholder": "问问 AI 你的收藏...",
     "refactorConfirm": "AI 建议重构该文件结构，是否应用？",
     "refactoring": "正在重构结构...",
-    "noSearchResult": "AI 未在收藏中找到匹配内容"
+    "noSearchResult": "AI 未在收藏中找到匹配内容",
+    "lossWarning": "AI 重构后检测到书签数量减少（从 {{old}} 减少到 {{new}}），可能存在数据丢失。是否继续？",
+    "truncated": "AI 响应被截断，重构操作已取消。请尝试减小文件大小或使用更高级的模型。"
   },
   "content": {
     "selectBookmark": "选择一个书签进行阅读",

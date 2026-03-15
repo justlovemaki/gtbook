@@ -3,6 +3,13 @@
  */
 export function safeExtractContent(content: string): string {
   if (!content) return '';
+  
+  // Try to find content within markdown code blocks (handle both ```md and ```)
+  const codeBlockMatch = content.match(/```(?:\w+)?\s*\n([\s\S]*?)(?:\n\s*```|$)/);
+  if (codeBlockMatch) {
+    return codeBlockMatch[1].trim();
+  }
+  
   return content.trim().replace(/^```(\w+)?\n?/, '').replace(/\n?```$/, '').trim();
 }
 
@@ -37,18 +44,23 @@ export function safeParseJSON<T>(content: string, defaultValue: T): T {
 export function repairMarkdownFormat(text: string): string {
   const lines = text.split('\n');
   return lines.map(line => {
-    // Match standard markdown list: optional spaces followed by asterisk and content
-    const match = line.match(/^(\s*)\*\s+\[(.*?)\]\((.*?)\)/);
+    // 1. Check if it's already in the * * format
+    if (line.trim().startsWith('* *') || line.trim().match(/^(\*\s+){2,}\[/)) {
+      return line;
+    }
+
+    // 2. Match standard markdown list: optional spaces/tabs, followed by a list marker (*, -, or +), then a link
+    // We capture: indentation, marker, title, url, and any trailing text
+    const match = line.match(/^(\s*)([*+-])\s*\[(.*?)\]\((.*?)\)(.*)/);
     if (!match) return line;
 
-    const [,, title, url] = match;
-    const indentSpaces = match[1].length;
+    const [, indent, , title, url, rest] = match;
+    const indentSpaces = indent.replace(/\t/g, '  ').length;
     
     // Calculate level based on spaces (usually 2 spaces per level)
-    // If no spaces, level 1. If 2 spaces, level 2, etc.
-    const level = Math.floor(indentSpaces / 2) + 1;
+    const level = Math.max(1, Math.floor(indentSpaces / 2) + 1);
     
-    // Return in project format: * * [Title](url)
-    return `${'* '.repeat(level)}[${title}](${url})`;
+    // Return in project format: * * [Title](url) plus the preserved rest of the line
+    return `${'* '.repeat(level)}[${title}](${url})${rest}`;
   }).join('\n');
 }

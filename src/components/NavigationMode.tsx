@@ -13,7 +13,8 @@ import {
   Search,
   X,
   FileText,
-  CloudUpload
+  CloudUpload,
+  ArrowUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
@@ -215,6 +216,25 @@ export const NavigationMode: React.FC<{
   } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (containerRef.current) {
+        setShowScrollTop(containerRef.current.scrollTop > 400);
+      }
+    };
+    const div = containerRef.current;
+    if (div) {
+      div.addEventListener('scroll', handleScroll);
+      return () => div.removeEventListener('scroll', handleScroll);
+    }
+  }, []);
+
+  const scrollToTop = () => {
+    containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const handleSync = async () => {
     if (!config || pendingChanges.length === 0) return;
@@ -275,41 +295,47 @@ export const NavigationMode: React.FC<{
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-background p-6 md:p-12 lg:p-20 relative">
+    <div ref={containerRef} className="flex-1 overflow-y-auto bg-background p-6 md:p-12 lg:p-20 relative">
       {/* Top Navigation Bar */}
       <div className="fixed top-6 right-6 z-50 flex items-center gap-2">
-        <button
-          onClick={() => setViewMode('reader')}
-          className="flex items-center gap-2 px-4 py-2 bg-background/80 backdrop-blur border rounded-full shadow-lg hover:shadow-xl transition-all text-sm font-bold text-primary border-primary/20"
-        >
-          <BookOpen className="w-4 h-4" />
-          <span className="hidden sm:inline">{t('nav.readerMode')}</span>
-        </button>
-        <button
-          onClick={onRefresh}
-          className="p-2.5 bg-background/80 backdrop-blur border rounded-full shadow-lg hover:shadow-xl transition-all text-muted-foreground hover:text-primary border-border"
-          title={t('fileNav.refreshAll')}
-        >
-          <RefreshCw className={clsx("w-4 h-4", isLoading && "animate-spin")} />
-        </button>
-        {pendingChanges.length > 0 && (
+        {import.meta.env.VITE_PUBLIC_MODE !== 'true' && (
           <button
-            onClick={handleSync}
-            disabled={isSyncing}
-            className="p-2.5 bg-background/80 backdrop-blur border border-amber-500/30 rounded-full shadow-lg hover:shadow-xl transition-all text-amber-500 hover:text-amber-600 animate-pulse flex items-center gap-2"
-            title={t('sync.offlineSyncButton')}
+            onClick={() => setViewMode('reader')}
+            className="flex items-center gap-2 px-4 py-2 bg-background/80 backdrop-blur border rounded-full shadow-lg hover:shadow-xl transition-all text-sm font-bold text-primary border-primary/20"
           >
-            <CloudUpload className={clsx("w-4 h-4", isSyncing && "animate-spin")} />
-            <span className="text-[10px] font-black pr-1">{pendingChanges.length}</span>
+            <BookOpen className="w-4 h-4" />
+            <span className="hidden sm:inline">{t('nav.readerMode')}</span>
           </button>
         )}
-        <button
-          onClick={onOpenSettings}
-          className="p-2.5 bg-background/80 backdrop-blur border rounded-full shadow-lg hover:shadow-xl transition-all text-muted-foreground hover:text-primary border-border"
-          title={t('common.settings')}
-        >
-          <SettingsIcon className="w-4 h-4" />
-        </button>
+        {import.meta.env.VITE_PUBLIC_MODE !== 'true' && (
+          <>
+            <button
+              onClick={onRefresh}
+              className="p-2.5 bg-background/80 backdrop-blur border rounded-full shadow-lg hover:shadow-xl transition-all text-muted-foreground hover:text-primary border-border"
+              title={t('fileNav.refreshAll')}
+            >
+              <RefreshCw className={clsx("w-4 h-4", isLoading && "animate-spin")} />
+            </button>
+            {pendingChanges.length > 0 && (
+              <button
+                onClick={handleSync}
+                disabled={isSyncing}
+                className="p-2.5 bg-background/80 backdrop-blur border border-amber-500/30 rounded-full shadow-lg hover:shadow-xl transition-all text-amber-500 hover:text-amber-600 animate-pulse flex items-center gap-2"
+                title={t('sync.offlineSyncButton')}
+              >
+                <CloudUpload className={clsx("w-4 h-4", isSyncing && "animate-spin")} />
+                <span className="text-[10px] font-black pr-1">{pendingChanges.length}</span>
+              </button>
+            )}
+            <button
+              onClick={onOpenSettings}
+              className="p-2.5 bg-background/80 backdrop-blur border rounded-full shadow-lg hover:shadow-xl transition-all text-muted-foreground hover:text-primary border-border"
+              title={t('common.settings')}
+            >
+              <SettingsIcon className="w-4 h-4" />
+            </button>
+          </>
+        )}
       </div>
 
       <div className="max-w-7xl mx-auto space-y-24 pb-32">
@@ -319,11 +345,13 @@ export const NavigationMode: React.FC<{
             Cloud Hub
           </div>
           <h1 className="text-5xl md:text-8xl font-black tracking-tighter leading-[0.85] text-foreground">
-            Digital<br />
-            <span className="text-primary opacity-90 italic">{t('nav.digitalNavigator')}</span>
+            {import.meta.env.VITE_NAV_TITLE || 'Digital'}<br />
+            <span className="text-primary opacity-90 italic">
+              {import.meta.env.VITE_NAV_TITLE ? '' : t('nav.digitalNavigator')}
+            </span>
           </h1>
           <p className="text-muted-foreground text-base font-medium max-w-md leading-relaxed opacity-70">
-            {t('nav.gatewayDesc')}
+            {import.meta.env.VITE_NAV_DESC || t('nav.gatewayDesc')}
           </p>
           
           <div className="pt-4 max-w-md">
@@ -400,6 +428,22 @@ export const NavigationMode: React.FC<{
           </div>
         )}
       </div>
+
+      {/* Back to Top Button */}
+      <AnimatePresence>
+        {showScrollTop && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            onClick={scrollToTop}
+            className="fixed bottom-8 right-6 z-50 p-3 bg-primary text-primary-foreground rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all md:hidden"
+            title="Back to Top"
+          >
+            <ArrowUp className="w-6 h-6" />
+          </motion.button>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

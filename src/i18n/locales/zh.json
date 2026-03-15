@@ -2,6 +2,7 @@
   "common": {
     "save": "保存",
     "cancel": "取消",
+    "close": "关闭",
     "settings": "设置",
     "refresh": "刷新",
     "add": "添加",
@@ -150,7 +151,7 @@
     "root": "根目录",
     "source": "来源",
     "folderEmpty": "此文件夹为空",
-    "accessingFavorites": "正在访问收藏夹...",
+    "accessingFavorites": "正在访问数据...",
     "readerMode": "阅读模式",
     "digitalNavigator": "智能收藏家。",
     "gatewayDesc": "AI 助力的 GitHub 链接管家。一键智能入库，语义化深度搜索，让碎片信息井然有序。",

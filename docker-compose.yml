@@ -1,0 +1,7 @@
+services:
+  gtbook:
+    build: .
+    container_name: gtbook
+    ports:
+      - "8080:80"
+    restart: unless-stopped

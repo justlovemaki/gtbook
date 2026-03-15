@@ -14,9 +14,86 @@ const Settings = lazy(() => import('./components/Settings').then(m => ({ default
 const AIAssistant = lazy(() => import('./components/AIAssistant').then(m => ({ default: m.AIAssistant })));
 
 function App() {
-  const { t } = useTranslation();
-  const { config, setFiles, setLoading, setError, isLoading, files, setLastFetched, viewMode, theme, mobileActivePane, _hasHydrated } = useStore();
+  const { t, i18n } = useTranslation();
+  const { config, setConfig, setFiles, setLoading, setError, isLoading, files, activeFileIndex, setLastFetched, viewMode, setViewMode, theme, setTheme, mobileActivePane, _hasHydrated } = useStore();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Initialize/Override config from ENV if available
+  useEffect(() => {
+    if (_hasHydrated) {
+      // 1. Handle Config
+      const envConfig = {
+        githubToken: import.meta.env.VITE_GITHUB_TOKEN,
+        owner: import.meta.env.VITE_GITHUB_OWNER,
+        repo: import.meta.env.VITE_GITHUB_REPO,
+        path: import.meta.env.VITE_GITHUB_PATH,
+        openaiKey: import.meta.env.VITE_OPENAI_KEY,
+        openaiBaseUrl: import.meta.env.VITE_OPENAI_BASE_URL,
+        openaiModel: import.meta.env.VITE_OPENAI_MODEL
+      };
+
+      const currentConfig = config || { 
+        githubToken: '', owner: '', repo: '', path: 'favorites', openaiKey: '',
+        openaiBaseUrl: 'https://api.openai.com/v1', openaiModel: 'gpt-3.5-turbo'
+      };
+      
+      let hasChanged = false;
+      const mergedConfig = { ...currentConfig };
+
+      // Apply ENV overrides
+      if (envConfig.githubToken && envConfig.githubToken !== currentConfig.githubToken) {
+        mergedConfig.githubToken = envConfig.githubToken;
+        hasChanged = true;
+      }
+      if (envConfig.owner && envConfig.owner !== currentConfig.owner) {
+        mergedConfig.owner = envConfig.owner;
+        hasChanged = true;
+      }
+      if (envConfig.repo && envConfig.repo !== currentConfig.repo) {
+        mergedConfig.repo = envConfig.repo;
+        hasChanged = true;
+      }
+      if (envConfig.path && envConfig.path !== currentConfig.path) {
+        mergedConfig.path = envConfig.path;
+        hasChanged = true;
+      }
+      if (envConfig.openaiKey && envConfig.openaiKey !== currentConfig.openaiKey) {
+        mergedConfig.openaiKey = envConfig.openaiKey;
+        hasChanged = true;
+      }
+      if (envConfig.openaiBaseUrl && envConfig.openaiBaseUrl !== currentConfig.openaiBaseUrl) {
+        mergedConfig.openaiBaseUrl = envConfig.openaiBaseUrl;
+        hasChanged = true;
+      }
+      if (envConfig.openaiModel && envConfig.openaiModel !== currentConfig.openaiModel) {
+        mergedConfig.openaiModel = envConfig.openaiModel;
+        hasChanged = true;
+      }
+
+      if (hasChanged || (!config && mergedConfig.githubToken && mergedConfig.owner && mergedConfig.repo)) {
+        setConfig(mergedConfig);
+      }
+
+      // 2. Handle Default Theme
+      const envTheme = import.meta.env.VITE_DEFAULT_THEME;
+      if (envTheme && theme !== envTheme) {
+        setTheme(envTheme as 'light' | 'dark' | 'system');
+      }
+
+      // 3. Handle Default Language
+      const envLang = import.meta.env.VITE_DEFAULT_LANG;
+      if (envLang && i18n.language !== envLang) {
+        i18n.changeLanguage(envLang);
+      }
+    }
+  }, [_hasHydrated, config, setConfig, theme, setTheme, i18n]);
+
+
+  useEffect(() => {
+    if (import.meta.env.VITE_PUBLIC_MODE === 'true' && viewMode !== 'navigation') {
+      setViewMode('navigation');
+    }
+  }, [viewMode, setViewMode]);
 
   useEffect(() => {
     const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -32,12 +109,62 @@ function App() {
     }
   }, [theme]);
 
+  // Update SEO metadata based on language and active file
+  useEffect(() => {
+    const activeFile = files[activeFileIndex];
+    const baseTitle = t('app.title');
+    const suffix = t('nav.digitalNavigator');
+    const fullSuffix = `${suffix} & Smart Link Collector`;
+    
+    if (viewMode === 'reader' && activeFile) {
+      const fileName = activeFile.filename.replace('.md', '');
+      document.title = `${fileName} | ${baseTitle} - Modern GitHub Favorites Manager`;
+    } else {
+      document.title = `${baseTitle} - ${fullSuffix}`;
+    }
+
+    const metaDescription = document.querySelector('meta[name="description"]');
+    if (metaDescription) {
+      // Use a more detailed description to hit the 140-160 range (for Latin characters)
+      // or 70-80 for CJK characters.
+      const desc = t('nav.gatewayDesc') || t('app.description');
+      let finalDesc = desc;
+      
+      if (i18n.language.startsWith('zh')) {
+        // For Chinese, aim for ~80 characters or longer if the tool expects 140+ Latin-equivalent
+        if (finalDesc.length < 100) {
+          finalDesc += " gtbook 提供一个安全、纯客户端的环境，通过 AI 驱动的语义搜索和智能分类功能，帮助您高效管理数字化收藏。使用 GitHub 作为后端，确保数据完全由您掌控且永不丢失。";
+        }
+      } else {
+        if (finalDesc.length < 140) {
+          finalDesc += " gtbook provides a secure, purely client-side environment for managing your digital ecosystem with AI-powered semantic search, smart organization, and seamless GitHub integration for data persistence.";
+        }
+      }
+      
+      metaDescription.setAttribute('content', finalDesc);
+      
+      const ogDesc = document.querySelector('meta[property="og:description"]');
+      if (ogDesc) ogDesc.setAttribute('content', finalDesc);
+      const twitterDesc = document.querySelector('meta[name="twitter:description"]');
+      if (twitterDesc) twitterDesc.setAttribute('content', finalDesc);
+    }
+  }, [t, i18n.language, files, activeFileIndex, viewMode]);
+
 
   useEffect(() => {
-    const hasConfig = config?.githubToken && config?.owner && config?.repo;
+    const hasConfig = config?.githubToken || (config?.owner && config?.repo);
     if (hasConfig && !isLoading) {
       if (files.length === 0) {
         loadData();
+      } else {
+        // Check if last fetched was more than 30 minutes ago
+        const thirtyMinutesInMs = 30 * 60 * 1000;
+        const now = Date.now();
+        const lastFetchedTime = useStore.getState().lastFetched || 0;
+        
+        if (now - lastFetchedTime > thirtyMinutesInMs) {
+          loadData(true); // Force refresh
+        }
       }
     }
   }, [config]);
@@ -123,7 +250,7 @@ function App() {
       <ToastContainer />
 
       {/* Initial State / Overlay */}
-      {_hasHydrated && !config && (
+      {_hasHydrated && !config && import.meta.env.VITE_PUBLIC_MODE !== 'true' && (
         <div className="fixed inset-0 z-[60] bg-background flex flex-col items-center justify-center p-6 text-center">
           <div className="max-w-md space-y-6">
             <div className="bg-primary/5 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-primary/10">

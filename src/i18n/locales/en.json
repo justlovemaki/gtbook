@@ -2,6 +2,7 @@
   "common": {
     "save": "Save",
     "cancel": "Cancel",
+    "close": "Close",
     "settings": "Settings",
     "refresh": "Refresh",
     "add": "Add",
@@ -150,7 +151,7 @@
     "root": "ROOT",
     "source": "Source",
     "folderEmpty": "This folder is empty",
-    "accessingFavorites": "Accessing Favorites...",
+    "accessingFavorites": "Accessing Data...",
     "readerMode": "Reader Mode",
     "digitalNavigator": "Smart Collector.",
     "gatewayDesc": "AI-powered GitHub link manager. Smart organizing, semantic search, and an orderly digital ecosystem.",

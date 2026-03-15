@@ -71,7 +71,7 @@ export const ContentView: React.FC = () => {
       const summary = safeExtractContent(data.choices[0].message.content);
       
       // 3. Display summary as a toast or update content
-      toast.info(t('content.summaryTitle'), summary);
+      toast.info(t('content.summaryTitle'), summary, 30000);
     } catch (err: any) {
       toast.error(t('content.summaryFailed'), err.message);
     } finally {

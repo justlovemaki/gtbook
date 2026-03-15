@@ -60,7 +60,41 @@ npm install
 npm run dev
 ```
 
-### 3. 配置
+### 3. Docker 部署
+
+如果您希望使用 Docker 部署，可以使用以下命令：
+
+```bash
+# 使用 Docker Compose 启动
+docker-compose up -d
+```
+
+启动后，可以通过 `http://localhost:8080` 访问。
+
+### 4. 云平台部署
+
+您可以将 **gtbook** 轻松部署到常见的静态托管平台。
+
+#### Cloudflare Pages
+1.  在 Cloudflare 控制台中选择 Page 点击 **Create a project** -> **Connect to Git**。
+2.  选择您的仓库。
+3.  在 **Build settings** 中配置：
+    -   **Framework preset**: `Vite`
+    -   **Build command**: `npm run build`
+    -   **Build output directory**: `dist`
+4.  （可选）在 **Environment variables** 中添加环境变量（如 `VITE_GITHUB_OWNER`）。
+5.  点击 **Save and Deploy**。
+
+#### Vercel
+1.  在 Vercel 控制台中点击 **Add New** -> **Project**。
+2.  导入您的仓库。
+3.  Vercel 会自动识别 Vite 项目并配置好构建参数。如果没有，请确保：
+    -   **Framework Preset**: `Vite`
+    -   **Build Command**: `npm run build`
+    -   **Output Directory**: `dist`
+4.  点击 **Deploy**。
+
+### 5. 配置
 
 在应用启动后的“设置”界面中，填入您的 GitHub 信息（Repo Owner, Repo Name, Token）即可开始同步。
 

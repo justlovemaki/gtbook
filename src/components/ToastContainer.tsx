@@ -12,6 +12,7 @@ export const ToastContainer: React.FC = () => {
       {toasts.map((t) => (
         <Toast.Root
           key={t.id}
+          duration={t.duration}
           className={clsx(
             "group pointer-events-auto relative flex w-full items-center justify-between space-x-4 overflow-hidden rounded-md border p-4 pr-8 shadow-lg transition-all",
             t.type === 'success' && "bg-green-50 text-green-900 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800",

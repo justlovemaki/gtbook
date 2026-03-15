@@ -19,13 +19,18 @@ export class GitHubService {
       url.searchParams.set('t', Date.now().toString());
     }
 
+    const headers: any = {
+      'Accept': 'application/vnd.github.v3+json',
+      ...options.headers,
+    };
+
+    if (this.config.githubToken) {
+      headers['Authorization'] = `token ${this.config.githubToken}`;
+    }
+
     const response = await fetch(url.toString(), {
       ...options,
-      headers: {
-        'Authorization': `token ${this.config.githubToken}`,
-        'Accept': 'application/vnd.github.v3+json',
-        ...options.headers,
-      },
+      headers,
     });
 
     if (!response.ok) {

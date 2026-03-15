@@ -13,7 +13,8 @@ import {
   LayoutDashboard, 
   BookOpen,
   CloudUpload,
-  Sparkles
+  Sparkles,
+  X
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { FavoriteFile } from '../lib/types';
@@ -38,7 +39,8 @@ export const FileNav: React.FC<{
     viewMode, 
     setViewMode,
     pendingChanges,
-    clearPendingChanges 
+    clearPendingChanges,
+    setMobileActivePane
   } = useStore();
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -176,34 +178,45 @@ export const FileNav: React.FC<{
     <div className="w-full md:w-48 border-r bg-muted/50 flex flex-col h-full shrink-0">
       <div className="p-3 border-b flex items-center justify-between">
         <div className="flex items-center gap-2">
+          <button 
+            onClick={() => { setMobileActivePane('bookmarks'); }}
+            className="md:hidden p-1.5 hover:bg-background rounded-lg text-primary transition-colors -ml-1"
+            title={t('common.close')}
+          >
+            <X className="w-5 h-5" />
+          </button>
           <Github className="w-5 h-5 text-primary shrink-0" />
         </div>
         <div className="flex items-center gap-1">
-          <button 
-            onClick={handleAddFile}
-            className="p-1 hover:bg-background rounded text-muted-foreground hover:text-primary transition-colors"
-            title={t('fileNav.addCategory')}
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
-          <button 
-            onClick={onRefresh}
-            disabled={isLoading}
-            className="p-1 hover:bg-background rounded text-muted-foreground transition-colors"
-            title={t('fileNav.refreshAll')}
-          >
-            <RefreshCw className={clsx("w-3.5 h-3.5", isLoading && "animate-spin")} />
-          </button>
-          {pendingChanges.length > 0 && (
-            <button 
-              onClick={handleSync}
-              disabled={isSyncing}
-              className="p-1 hover:bg-background rounded text-amber-500 animate-pulse transition-colors flex items-center gap-1"
-              title={t('sync.offlineSyncButton')}
-            >
-              <CloudUpload className={clsx("w-3.5 h-3.5", isSyncing && "animate-spin")} />
-              <span className="text-[10px] font-black">{pendingChanges.length}</span>
-            </button>
+          {import.meta.env.VITE_PUBLIC_MODE !== 'true' && (
+            <>
+              <button 
+                onClick={handleAddFile}
+                className="p-1 hover:bg-background rounded text-muted-foreground hover:text-primary transition-colors"
+                title={t('fileNav.addCategory')}
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+              <button 
+                onClick={onRefresh}
+                disabled={isLoading}
+                className="p-1 hover:bg-background rounded text-muted-foreground transition-colors"
+                title={t('fileNav.refreshAll')}
+              >
+                <RefreshCw className={clsx("w-3.5 h-3.5", isLoading && "animate-spin")} />
+              </button>
+              {pendingChanges.length > 0 && (
+                <button 
+                  onClick={handleSync}
+                  disabled={isSyncing}
+                  className="p-1 hover:bg-background rounded text-amber-500 animate-pulse transition-colors flex items-center gap-1"
+                  title={t('sync.offlineSyncButton')}
+                >
+                  <CloudUpload className={clsx("w-3.5 h-3.5", isSyncing && "animate-spin")} />
+                  <span className="text-[10px] font-black">{pendingChanges.length}</span>
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -228,64 +241,72 @@ export const FileNav: React.FC<{
             </div>
             
             <div className="hidden group-hover:flex items-center gap-0.5 ml-1 shrink-0">
-              <button 
-                onClick={(e) => { e.stopPropagation(); handleRefactor(file); }}
-                className={clsx(
-                  "p-1 rounded transition-colors",
-                  activeFileIndex === index 
-                    ? "hover:bg-white/20 text-white" 
-                    : "hover:bg-black/10 text-primary"
-                )}
-                title={t('ai.refactorMode')}
-              >
-                <Sparkles className="w-2.5 h-2.5" />
-              </button>
-              <button 
-                onClick={(e) => handleRenameFile(e, file)}
-                className={clsx(
-                  "p-1 rounded transition-colors",
-                  activeFileIndex === index ? "hover:bg-white/20 text-white" : "hover:bg-black/10"
-                )}
-              >
-                <Edit2 className="w-2.5 h-2.5" />
-              </button>
-              <button 
-                onClick={(e) => handleDeleteFile(e, file)}
-                className={clsx(
-                  "p-1 rounded transition-colors",
-                  activeFileIndex === index ? "hover:bg-white/20 text-white" : "hover:bg-black/10 hover:text-destructive"
-                )}
-              >
-                <Trash2 className="w-2.5 h-2.5" />
-              </button>
+              {import.meta.env.VITE_PUBLIC_MODE !== 'true' && (
+                <>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleRefactor(file); }}
+                    className={clsx(
+                      "p-1 rounded transition-colors",
+                      activeFileIndex === index 
+                        ? "hover:bg-white/20 text-white" 
+                        : "hover:bg-black/10 text-primary"
+                    )}
+                    title={t('ai.refactorMode')}
+                  >
+                    <Sparkles className="w-2.5 h-2.5" />
+                  </button>
+                  <button 
+                    onClick={(e) => handleRenameFile(e, file)}
+                    className={clsx(
+                      "p-1 rounded transition-colors",
+                      activeFileIndex === index ? "hover:bg-white/20 text-white" : "hover:bg-black/10"
+                    )}
+                  >
+                    <Edit2 className="w-2.5 h-2.5" />
+                  </button>
+                  <button 
+                    onClick={(e) => handleDeleteFile(e, file)}
+                    className={clsx(
+                      "p-1 rounded transition-colors",
+                      activeFileIndex === index ? "hover:bg-white/20 text-white" : "hover:bg-black/10 hover:text-destructive"
+                    )}
+                  >
+                    <Trash2 className="w-2.5 h-2.5" />
+                  </button>
+                </>
+              )}
             </div>
           </div>
         ))}
       </div>
 
       <div className="p-2 border-t space-y-1">
-        <button
-          onClick={() => setViewMode(viewMode === 'reader' ? 'navigation' : 'reader')}
-          className="w-full flex items-center justify-start gap-2 px-2 py-2 text-primary hover:bg-primary/10 rounded-md transition-colors font-semibold"
-          title={viewMode === 'reader' ? t('fileNav.navigation') : t('fileNav.reader')}
-        >
-          {viewMode === 'reader' ? (
-            <LayoutDashboard className="w-4 h-4 shrink-0" />
-          ) : (
-            <BookOpen className="w-4 h-4 shrink-0" />
-          )}
-          <span className="text-xs block">
-            {viewMode === 'reader' ? t('fileNav.navigation') : t('fileNav.reader')}
-          </span>
-        </button>
+        {import.meta.env.VITE_PUBLIC_MODE !== 'true' && (
+          <button
+            onClick={() => setViewMode(viewMode === 'reader' ? 'navigation' : 'reader')}
+            className="w-full flex items-center justify-start gap-2 px-2 py-2 text-primary hover:bg-primary/10 rounded-md transition-colors font-semibold"
+            title={viewMode === 'reader' ? t('fileNav.navigation') : t('fileNav.reader')}
+          >
+            {viewMode === 'reader' ? (
+              <LayoutDashboard className="w-4 h-4 shrink-0" />
+            ) : (
+              <BookOpen className="w-4 h-4 shrink-0" />
+            )}
+            <span className="text-xs block">
+              {viewMode === 'reader' ? t('fileNav.navigation') : t('fileNav.reader')}
+            </span>
+          </button>
+        )}
         
-        <button
-          onClick={onOpenSettings}
-          className="w-full flex items-center justify-start gap-2 px-2 py-2 text-muted-foreground hover:bg-muted rounded-md transition-colors"
-        >
-          <SettingsIcon className="w-4 h-4 shrink-0" />
-          <span className="text-xs block">{t('common.settings')}</span>
-        </button>
+        {import.meta.env.VITE_PUBLIC_MODE !== 'true' && (
+          <button
+            onClick={onOpenSettings}
+            className="w-full flex items-center justify-start gap-2 px-2 py-2 text-muted-foreground hover:bg-muted rounded-md transition-colors"
+          >
+            <SettingsIcon className="w-4 h-4 shrink-0" />
+            <span className="text-xs block">{t('common.settings')}</span>
+          </button>
+        )}
       </div>
     </div>
   );

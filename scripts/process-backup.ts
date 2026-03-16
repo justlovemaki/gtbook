@@ -46,6 +46,11 @@ function extractLinks(content: string): Bookmark[] {
 }
 
 async function checkLink(url: string): Promise<{ ok: boolean; status?: number; error?: string }> {
+    // 微信公众号链接通常有防爬措施，且容易误报，统一视为成功
+    if (url.includes('mp.weixin.qq.com')) {
+        return { ok: true };
+    }
+
     try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 30000); // Increased to 30s timeout

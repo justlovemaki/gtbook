@@ -409,6 +409,34 @@ export const BookmarkTree: React.FC = () => {
     }
   };
 
+  const handleAddRootBookmark = async () => {
+    if (!config || !activeFile) return;
+    const title = window.prompt(t('bookmark.enterBookmarkTitle'));
+    if (!title) return;
+    const url = window.prompt(t('bookmark.enterBookmarkUrl'), "https://");
+    if (!url) return;
+    try {
+      const github = new GitHubService(config);
+      const { content: currentRaw, sha: latestSha } = await github.getFileRawContent(activeFile.path);
+      const updatedRaw = insertLinkToMarkdown(currentRaw, 'root', title, url);
+      try {
+        const newSha = await github.updateFile({ ...activeFile, sha: latestSha }, updatedRaw);
+        const updatedFiles = [...files];
+        updatedFiles[activeFileIndex] = { ...activeFile, content: updatedRaw, sha: newSha, tree: parseMarkdown(updatedRaw) };
+        setFiles(updatedFiles, true);
+        toast.success(t('common.success'));
+      } catch (err) {
+        useStore.getState().addPendingChange({ path: activeFile.path, content: updatedRaw, sha: latestSha });
+        toast.warning(t('sync.offlineBookmarkAdded'));
+        const updatedFiles = [...files];
+        updatedFiles[activeFileIndex] = { ...activeFile, content: updatedRaw, tree: parseMarkdown(updatedRaw), sha: latestSha };
+        setFiles(updatedFiles);
+      }
+    } catch (err: any) {
+      toast.error(t('common.failed'), err.message);
+    }
+  };
+
   const handleRefreshCurrent = async () => {
     if (!config || !activeFile) return;
     try {
@@ -481,6 +509,7 @@ export const BookmarkTree: React.FC = () => {
             <div className="p-3 border-b bg-muted/20 flex items-center justify-between">
               <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2"><Hash className="w-3.5 h-3.5" />{activeFile?.filename.replace(/^\d+-/, '').replace('.md', '') || t('bookmark.noFileSelected')}</h2>
       <div className="flex items-center gap-1">
+        <button onClick={handleAddRootBookmark} className="p-1.5 hover:bg-background rounded-lg text-muted-foreground hover:text-primary transition-colors" title={t('bookmark.newRootBookmark')}><Plus className="w-4 h-4" /></button>
         <button onClick={handleAddRootDir} className="p-1.5 hover:bg-background rounded-lg text-muted-foreground hover:text-primary transition-colors" title={t('bookmark.newRootFolder')}><FolderPlus className="w-4 h-4" /></button>
         <button onClick={handleRefreshCurrent} className="p-1.5 hover:bg-background rounded-lg text-muted-foreground hover:text-primary transition-colors" title={t('bookmark.refreshCurrentFile')}><RefreshCw className="w-4 h-4" /></button>
       </div>

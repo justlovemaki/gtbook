@@ -87,6 +87,7 @@
     "noMatchingBookmarks": "No matching bookmarks found",
     "noFileSelected": "No File Selected",
     "newRootFolder": "New Root Folder",
+    "newRootBookmark": "New Root Bookmark",
     "refreshCurrentFile": "Refresh Current File",
     "pleaseSelectFile": "Please select a file to view bookmarks",
     "fileEmpty": "This file is empty",

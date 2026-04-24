@@ -16,7 +16,8 @@ import {
   CloudUpload,
   ArrowUp,
   Moon,
-  Sun
+  Sun,
+  Github
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
@@ -340,6 +341,15 @@ export const NavigationMode: React.FC<{
             </button>
           </>
         )}
+        <a
+          href="https://github.com/justlovemaki/gtbook"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="p-2.5 bg-background/80 backdrop-blur border rounded-full shadow-lg hover:shadow-xl transition-all text-muted-foreground hover:text-primary border-border"
+          title={t('settings.projectLink')}
+        >
+          <Github className="w-4 h-4" />
+        </a>
         {import.meta.env.VITE_PUBLIC_MODE === 'true' && (
           <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -353,9 +363,20 @@ export const NavigationMode: React.FC<{
 
       <div className="max-w-7xl mx-auto space-y-24 pb-32">
         <header className="space-y-4 max-w-2xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/5 border border-primary/10 text-primary text-[10px] font-black uppercase tracking-widest">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
-            Cloud Hub
+          <div className="flex items-center gap-4">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/5 border border-primary/10 text-primary text-[10px] font-black uppercase tracking-widest">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+              Cloud Hub
+            </div>
+            <a
+              href="https://github.com/justlovemaki/gtbook"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors"
+            >
+              <Github className="w-3.5 h-3.5" />
+              {t('settings.projectLink')}
+            </a>
           </div>
           <h1 className="text-5xl md:text-8xl font-black tracking-tighter leading-[0.85] text-foreground">
             {import.meta.env.VITE_NAV_TITLE || 'Digital'}<br />

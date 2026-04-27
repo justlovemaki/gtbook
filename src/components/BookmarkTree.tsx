@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/useStore';
 import { 
@@ -41,16 +41,25 @@ interface SearchResult {
 
 const TreeNode: React.FC<{ item: Bookmark | Directory; depth: number; filename: string; fileIndex: number }> = ({ item, depth, filename, fileIndex }) => {
   const { t } = useTranslation();
-  const { selectedUrl, setSelectedUrl, config, files, setFiles } = useStore();
-  const [isOpen, setIsOpen] = useState(false);
+  const { selectedUrl, setSelectedUrl, config, files, setFiles, expandedIds, toggleExpandedId } = useStore();
+  const itemRef = useRef<HTMLDivElement>(null);
+  const isDir = 'children' in item;
+  const isOpen = expandedIds.includes(item.id);
   const [isHovered, setIsHovered] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
-  const isDir = 'children' in item;
+
+  const isSelected = !isDir && selectedUrl === item.url;
+
+  useEffect(() => {
+    if (isSelected && itemRef.current) {
+      itemRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [isSelected]);
 
   const handleClick = () => {
     if (isDir) {
-      setIsOpen(!isOpen);
+      toggleExpandedId(item.id);
     } else {
       setSelectedUrl(item.url);
     }
@@ -265,7 +274,7 @@ const TreeNode: React.FC<{ item: Bookmark | Directory; depth: number; filename: 
         const updatedFiles = [...files];
         updatedFiles[fileIndex] = { ...targetFile, content: updatedRaw, sha: newSha, tree: parseMarkdown(updatedRaw) };
         setFiles(updatedFiles, true);
-        setIsOpen(true);
+        if (!isOpen) toggleExpandedId(item.id);
         toast.success(t('common.success'));
       } catch (err) {
         useStore.getState().addPendingChange({ path: targetFile.path, content: updatedRaw, sha: latestSha });
@@ -296,7 +305,7 @@ const TreeNode: React.FC<{ item: Bookmark | Directory; depth: number; filename: 
         const updatedFiles = [...files];
         updatedFiles[fileIndex] = { ...targetFile, content: updatedRaw, sha: newSha, tree: parseMarkdown(updatedRaw) };
         setFiles(updatedFiles, true);
-        setIsOpen(true);
+        if (!isOpen) toggleExpandedId(item.id);
         toast.success(t('common.success'));
       } catch (err) {
         useStore.getState().addPendingChange({ path: targetFile.path, content: updatedRaw, sha: latestSha });
@@ -310,10 +319,8 @@ const TreeNode: React.FC<{ item: Bookmark | Directory; depth: number; filename: 
     }
   };
 
-  const isSelected = !isDir && selectedUrl === item.url;
-
   return (
-    <div className="select-none group/item" onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
+    <div className="select-none group/item" onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)} ref={itemRef}>
       <div
         onClick={handleClick}
         className={clsx(
@@ -380,7 +387,7 @@ const TreeNode: React.FC<{ item: Bookmark | Directory; depth: number; filename: 
 
 export const BookmarkTree: React.FC = () => {
   const { t } = useTranslation();
-  const { files, activeFileIndex, setActiveFileIndex, isLoading, selectedUrl, setSelectedUrl, config, setFiles, setMobileActivePane, searchQuery, setSearchQuery } = useStore();
+  const { files, activeFileIndex, setActiveFileIndex, isLoading, selectedUrl, setSelectedUrl, config, setFiles, setMobileActivePane, searchQuery, setSearchQuery, expandParents } = useStore();
   const activeFile = useMemo(() => files[activeFileIndex], [files, activeFileIndex]);
 
   const handleAddRootDir = async () => {
@@ -494,7 +501,7 @@ export const BookmarkTree: React.FC = () => {
             <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{t('bookmark.searchResults', { count: searchResults.length })}</div>
             {searchResults.length === 0 ? ( <div className="p-4 text-xs text-muted-foreground italic text-center">{t('bookmark.noMatchingBookmarks')}</div> ) : (
               searchResults.map((result, idx) => (
-                <div key={`${result.url}-${idx}`} onClick={() => { setActiveFileIndex(result.fileIndex); setSelectedUrl(result.url); }} className={clsx("p-2 rounded-md cursor-pointer transition-colors border border-transparent", selectedUrl === result.url ? "bg-accent text-accent-foreground border-border" : "hover:bg-muted/50 text-muted-foreground hover:text-foreground")}>
+                <div key={`${result.url}-${idx}`} onClick={() => { setActiveFileIndex(result.fileIndex); setSelectedUrl(result.url); expandParents(result.fileIndex, result.url); }} className={clsx("p-2 rounded-md cursor-pointer transition-colors border border-transparent", selectedUrl === result.url ? "bg-accent text-accent-foreground border-border" : "hover:bg-muted/50 text-muted-foreground hover:text-foreground")}>
                   <div className="text-sm font-medium text-foreground truncate mb-1">{result.title}</div>
                   <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] opacity-70">
                     <div className="flex items-center gap-1 bg-muted px-1.5 py-0.5 rounded border"><FileText className="w-2.5 h-2.5" />{result.filename.replace(/^\d+-/, '').replace('.md', '')}</div>

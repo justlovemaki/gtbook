@@ -48,7 +48,11 @@ interface AppState {
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   setMobileActivePane: (pane: 'files' | 'bookmarks' | 'content') => void;
   searchQuery: string;
+  expandedIds: string[];
   setSearchQuery: (query: string) => void;
+  setExpandedIds: (ids: string[]) => void;
+  toggleExpandedId: (id: string) => void;
+  expandParents: (fileIndex: number, url: string) => void;
   addFile: (file: FavoriteFile) => void;
   removeFile: (path: string) => void;
   updateFile: (path: string, updates: Partial<FavoriteFile>) => void;
@@ -70,10 +74,39 @@ export const useStore = create<AppState>()(
       theme: (import.meta.env.VITE_DEFAULT_THEME as any) || 'system',
       mobileActivePane: 'files',
       searchQuery: '',
+      expandedIds: [],
       _hasHydrated: false,
       pendingChanges: [],
       setHasHydrated: (state) => set({ _hasHydrated: state }),
       setSearchQuery: (searchQuery) => set({ searchQuery }),
+      setExpandedIds: (expandedIds) => set({ expandedIds }),
+      toggleExpandedId: (id) => set((state) => ({
+        expandedIds: state.expandedIds.includes(id)
+          ? state.expandedIds.filter(i => i !== id)
+          : [...state.expandedIds, id]
+      })),
+      expandParents: (fileIndex, url) => set((state) => {
+        const file = state.files[fileIndex];
+        if (!file) return state;
+        
+        const newExpandedIds = new Set(state.expandedIds);
+        const findAndExpand = (items: any[], targetUrl: string): boolean => {
+          for (const item of items) {
+            if ('children' in item) {
+              if (findAndExpand(item.children, targetUrl)) {
+                newExpandedIds.add(item.id);
+                return true;
+              }
+            } else if (item.url === targetUrl) {
+              return true;
+            }
+          }
+          return false;
+        };
+        
+        findAndExpand(file.tree, url);
+        return { expandedIds: Array.from(newExpandedIds), searchQuery: '' };
+      }),
       addPendingChange: (change, force = false) => set((state) => {
         // Find if this file already exists in current files and has same content
         const existingFile = state.files.find(f => f.path === change.path);
@@ -158,10 +191,9 @@ export const useStore = create<AppState>()(
         viewMode: state.viewMode,
         theme: state.theme,
         mobileActivePane: state.mobileActivePane,
-        pendingChanges: state.pendingChanges
+        pendingChanges: state.pendingChanges,
+        expandedIds: state.expandedIds
       }),
     }
   )
 );
-
-

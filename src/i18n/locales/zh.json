@@ -131,7 +131,13 @@
     "batchImport": "批量导入",
     "batchCount": "发现 {{count}} 个书签待导入",
     "confirm": "确认",
-    "andMore": "... 以及另外 {{count}} 个"
+    "andMore": "... 以及另外 {{count}} 个",
+    "compareMode": "链接比对",
+    "comparePlaceholder": "粘贴要比对的 Markdown 内容...",
+    "compareResult": "比对结果",
+    "addedLinks": "新增链接",
+    "removedLinks": "移除链接",
+    "noChanges": "没有发现差异"
   },
   "content": {
     "selectBookmark": "选择一个书签进行阅读",

@@ -1,27 +1,30 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/useStore';
-import { Sparkles, Loader2, Check, Minimize2, Search, PlusCircle } from 'lucide-react';
+import { Sparkles, Loader2, Check, Minimize2, Search, PlusCircle, ArrowLeftRight, Trash2, Plus, Globe, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
 import { GitHubService } from '../lib/github';
-import { insertLinkToMarkdown, parseMarkdown } from '../lib/markdown';
+import { toast } from '../store/useToast';
+import { insertLinkToMarkdown, parseMarkdown, compareLinks, extractLinkInfos, type LinkInfo, type ComparisonResult } from '../lib/markdown';
 import { safeParseJSON } from '../lib/ai';
 import type { FavoriteFile, Bookmark, Directory } from '../lib/types';
 
-type AssistantMode = 'organize' | 'search';
+type AssistantMode = 'organize' | 'search' | 'compare';
 
 export const AIAssistant: React.FC = () => {
   const { t } = useTranslation();
-  const { config, files, setFiles, setSelectedUrl, setActiveFileIndex } = useStore();
+  const { config, files, setFiles, setSelectedUrl, setActiveFileIndex, expandParents } = useStore();
   const [url, setUrl] = useState('');
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<AssistantMode>('organize');
   const [status, setStatus] = useState<'idle' | 'analyzing' | 'confirming' | 'success' | 'error'>('idle');
   const [suggestion, setSuggestion] = useState<{ file: string; dir: string; title: string; reason: string } | null>(null);
   const [batchSuggestions, setBatchSuggestions] = useState<{ file: string; dir: string; title: string; reason: string; url?: string }[] | null>(null);
-  const [searchResults, setSearchResults] = useState<{ title: string; url: string; fileIndex: number; reason: string }[]>([]);
+  const [comparison, setComparison] = useState<ComparisonResult | null>(null);
+  const [searchResults, setSearchResults] = useState<{ title: string; url: string; fileIndex: number; reason: string; filename: string; path: string }[]>([]);
   const [isMinimized, setIsMinimized] = useState(true);
+  const [targetFileIndex, setTargetFileIndex] = useState<number>(0);
 
   if (!config) return null;
 
@@ -92,6 +95,28 @@ Return JSON: { "file": "filename", "dir": "dir title or root", "title": "page ti
     } catch (err) {
       setStatus('error');
     }
+  };
+
+  const handleCompare = () => {
+    if (!url) return;
+    setStatus('analyzing');
+    try {
+      const repoLinks: LinkInfo[] = [];
+      files.forEach(f => {
+        repoLinks.push(...extractLinkInfos(f.content));
+      });
+      const result = compareLinks(url, repoLinks);
+      setComparison(result);
+      setStatus('confirming');
+    } catch (err) {
+      setStatus('error');
+    }
+  };
+
+  const handleCopy = (links: LinkInfo[]) => {
+    const text = links.map(l => `* [${l.title}](${l.url})${l.reason ? `: ${l.reason}` : ''}`).join('\n');
+    navigator.clipboard.writeText(text);
+    toast.success(t('content.copied'));
   };
 
   const handleAISearch = async () => {
@@ -169,9 +194,11 @@ Return JSON format:
           title: original.title, 
           url: original.url, 
           fileIndex: original.fileIndex, 
-          reason: r.reason 
+          reason: r.reason,
+          filename: files[original.fileIndex].filename,
+          path: original.path
         } : null;
-      }).filter((item): item is { title: string; url: string; fileIndex: number; reason: string } => item !== null);
+      }).filter((item): item is { title: string; url: string; fileIndex: number; reason: string; filename: string; path: string } => item !== null);
 
       setSearchResults(enrichedResults);
       setStatus('confirming');
@@ -289,6 +316,7 @@ Return JSON format:
               <div className="flex bg-muted p-0.5 rounded-lg border text-[10px] font-bold">
                 <button onClick={(e) => { e.stopPropagation(); setMode('organize'); setStatus('idle'); }} className={clsx("px-2 py-0.5 rounded", mode === 'organize' ? "bg-background text-primary" : "text-muted-foreground")}>{t('ai.organizeMode')}</button>
                 <button onClick={(e) => { e.stopPropagation(); setMode('search'); setStatus('idle'); }} className={clsx("px-2 py-0.5 rounded", mode === 'search' ? "bg-background text-primary" : "text-muted-foreground")}>{t('ai.searchMode')}</button>
+                <button onClick={(e) => { e.stopPropagation(); setMode('compare'); setStatus('idle'); setComparison(null); }} className={clsx("px-2 py-0.5 rounded", mode === 'compare' ? "bg-background text-primary" : "text-muted-foreground")}>{t('ai.compareMode')}</button>
               </div>
             )}
           </div>
@@ -298,40 +326,38 @@ Return JSON format:
         {!isMinimized && (
           <AnimatePresence mode="wait">
             <motion.div key={mode + status} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              {mode === 'organize' ? (
+              {status === 'confirming' && batchSuggestions ? (
+                <div className="space-y-4 text-xs">
+                  <div className="bg-muted/50 p-3 rounded border border-dashed">
+                    <p className="font-bold mb-1 text-primary">{t('ai.batchImport')}</p>
+                    <p>{t('ai.batchCount', { count: batchSuggestions.length })}</p>
+                    <div className="mt-2 max-h-32 overflow-y-auto space-y-1 opacity-70">
+                      {batchSuggestions.slice(0, 5).map((s, i) => (
+                        <div key={i} className="truncate">• {s.title} ({s.file})</div>
+                      ))}
+                      {batchSuggestions.length > 5 && <div>{t('ai.andMore', { count: batchSuggestions.length - 5 })}</div>}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => { setStatus('idle'); setBatchSuggestions(null); }} className="flex-1 py-1.5 border rounded">{t('common.cancel')}</button>
+                    <button onClick={handleBatchConfirm} className="flex-1 py-1.5 bg-primary text-primary-foreground rounded">{t('ai.confirm')}</button>
+                  </div>
+                </div>
+              ) : mode === 'organize' ? (
                 status === 'confirming' ? (
                   <div className="space-y-4 text-xs">
-                    {batchSuggestions ? (
-                      <div className="space-y-2">
-                        <div className="bg-muted/50 p-3 rounded border border-dashed">
-                          <p className="font-bold mb-1 text-primary">{t('ai.batchImport')}</p>
-                          <p>{t('ai.batchCount', { count: batchSuggestions.length })}</p>
-                          <div className="mt-2 max-h-32 overflow-y-auto space-y-1 opacity-70">
-                            {batchSuggestions.slice(0, 5).map((s, i) => (
-                              <div key={i} className="truncate">• {s.title} ({s.file})</div>
-                            ))}
-                            {batchSuggestions.length > 5 && <div>{t('ai.andMore', { count: batchSuggestions.length - 5 })}</div>}
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => { setStatus('idle'); setBatchSuggestions(null); }} className="flex-1 py-1.5 border rounded">{t('common.cancel')}</button>
-                          <button onClick={handleBatchConfirm} className="flex-1 py-1.5 bg-primary text-primary-foreground rounded">{t('ai.confirm')}</button>
-                        </div>
+                    <>
+                      <div className="bg-muted/50 p-3 rounded border border-dashed space-y-1">
+                        <p><strong>{t('ai.aiTitle')}:</strong> {suggestion?.title}</p>
+                        <p><strong>{t('ai.file')}:</strong> {suggestion?.file}</p>
+                        <p><strong>{t('ai.path')}:</strong> {suggestion?.dir}</p>
+                        <p className="italic opacity-70">"{suggestion?.reason}"</p>
                       </div>
-                    ) : (
-                      <>
-                        <div className="bg-muted/50 p-3 rounded border border-dashed space-y-1">
-                          <p><strong>{t('ai.aiTitle')}:</strong> {suggestion?.title}</p>
-                          <p><strong>{t('ai.file')}:</strong> {suggestion?.file}</p>
-                          <p><strong>{t('ai.path')}:</strong> {suggestion?.dir}</p>
-                          <p className="italic opacity-70">"{suggestion?.reason}"</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => setStatus('idle')} className="flex-1 py-1.5 border rounded">{t('common.cancel')}</button>
-                          <button onClick={handleConfirm} className="flex-1 py-1.5 bg-primary text-primary-foreground rounded">{t('common.save')}</button>
-                        </div>
-                      </>
-                    )}
+                      <div className="flex gap-2">
+                        <button onClick={() => setStatus('idle')} className="flex-1 py-1.5 border rounded">{t('common.cancel')}</button>
+                        <button onClick={handleConfirm} className="flex-1 py-1.5 bg-primary text-primary-foreground rounded">{t('common.save')}</button>
+                      </div>
+                    </>
                   </div>
                 ) : status === 'success' ? (
                   <div className="flex flex-col items-center py-4 text-green-600"><Check className="w-8 h-8 mb-2" /><span className="text-xs">{t('ai.success')}</span></div>
@@ -339,6 +365,126 @@ Return JSON format:
                   <div className="relative">
                     <input type="text" placeholder={t('ai.pasteUrl')} value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()} className="w-full pl-3 pr-10 py-2 bg-muted/50 border rounded text-sm outline-none" />
                     <button onClick={handleAnalyze} className="absolute right-2 top-1.5 text-primary">{status === 'analyzing' ? <Loader2 className="animate-spin w-5 h-5" /> : <PlusCircle className="w-5 h-5" />}</button>
+                  </div>
+                )
+              ) : mode === 'compare' ? (
+                status === 'confirming' && comparison ? (
+                  <div className="space-y-4 text-xs">
+                    <div className="bg-muted/50 p-3 rounded border border-dashed max-h-64 overflow-y-auto space-y-4">
+                      <p className="font-bold border-b pb-1 flex items-center gap-2"><ArrowLeftRight className="w-3 h-3" />{t('ai.compareResult')}</p>
+                      
+                      {comparison.added.length > 0 && (
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <p className="text-green-600 font-bold flex items-center gap-1"><Plus className="w-3 h-3" />{t('ai.addedLinks')} ({comparison.added.length})</p>
+                            <button onClick={() => handleCopy(comparison.added)} className="p-1 hover:bg-muted rounded transition-colors text-muted-foreground" title={t('common.copy')}>
+                              <Copy className="w-3 h-3" />
+                            </button>
+                          </div>
+                          {comparison.added.map((l, i) => (
+                            <div key={i} className="pl-4 space-y-0.5">
+                              <a 
+                                href={l.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="block truncate opacity-80 hover:text-primary hover:opacity-100 transition-colors" 
+                                title={l.url}
+                              >
+                                • {l.title}
+                              </a>
+                              {l.folder && l.folder !== 'root' && (
+                                <div className="pl-3 text-[9px] opacity-40 font-medium">in {l.folder}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {comparison.removed.length > 0 && (
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <p className="text-red-600 font-bold flex items-center gap-1"><Trash2 className="w-3 h-3" />{t('ai.removedLinks')} ({comparison.removed.length})</p>
+                            <button onClick={() => handleCopy(comparison.removed)} className="p-1 hover:bg-muted rounded transition-colors text-muted-foreground" title={t('common.copy')}>
+                              <Copy className="w-3 h-3" />
+                            </button>
+                          </div>
+                          {comparison.removed.map((l, i) => (
+                            <div key={i} className="pl-4 space-y-0.5">
+                              <a 
+                                href={l.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="block truncate opacity-80 hover:text-primary hover:opacity-100 transition-colors" 
+                                title={l.url}
+                              >
+                                • {l.title}
+                              </a>
+                              {l.folder && l.folder !== 'root' && (
+                                <div className="pl-3 text-[9px] opacity-40 font-medium">from {l.folder}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {comparison.added.length === 0 && comparison.removed.length === 0 && (
+                        <p className="text-muted-foreground italic py-2">{t('ai.noChanges')}</p>
+                      )}
+                    </div>
+                    <button onClick={() => setStatus('idle')} className="w-full py-1.5 border rounded">{t('common.close')}</button>
+                    {comparison.added.length > 0 && (
+                      <div className="space-y-2 pt-2 border-t">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[9px] font-bold text-muted-foreground uppercase">{t('ai.file')} (Import to)</label>
+                          <select 
+                            value={targetFileIndex} 
+                            onChange={(e) => setTargetFileIndex(parseInt(e.target.value))}
+                            className="w-full px-2 py-1 bg-muted border rounded text-[10px] outline-none"
+                          >
+                            {files.map((f, i) => (
+                              <option key={f.path} value={i}>{f.filename}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <button 
+                          onClick={() => {
+                            const suggestions = comparison.added.map(l => ({
+                              file: files[targetFileIndex].filename,
+                              dir: l.folder === 'root' ? 'root' : l.folder?.split(' > ').pop() || 'root',
+                              title: l.title,
+                              url: l.url,
+                              reason: l.reason || ''
+                            }));
+                            setBatchSuggestions(suggestions);
+                            setStatus('confirming');
+                          }} 
+                          className="w-full py-1.5 bg-primary text-primary-foreground rounded flex items-center justify-center gap-2 font-bold"
+                        >
+                          <PlusCircle className="w-3.5 h-3.5" />
+                          {t('ai.batchImport')}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 px-2 py-1 bg-primary/5 rounded border border-primary/10">
+                      <Globe className="w-3 h-3 text-primary" />
+                      <span className="text-[10px] font-bold text-primary uppercase tracking-widest">{t('nav.searchResults').split(' ')[0]} ({files.length} {t('ai.file')})</span>
+                    </div>
+                    <textarea 
+                      placeholder={t('ai.comparePlaceholder')} 
+                      value={url} 
+                      onChange={(e) => setUrl(e.target.value)} 
+                      className="w-full px-3 py-2 bg-muted/50 border rounded text-sm outline-none min-h-[100px] max-h-[300px] resize-none"
+                    />
+                    <button 
+                      onClick={handleCompare} 
+                      className="w-full py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium flex items-center justify-center gap-2"
+                    >
+                      {status === 'analyzing' ? <Loader2 className="animate-spin w-4 h-4" /> : <ArrowLeftRight className="w-4 h-4" />}
+                      {t('ai.compareMode')}
+                    </button>
                   </div>
                 )
               ) : (
@@ -355,14 +501,23 @@ Return JSON format:
                           onClick={() => { 
                             setActiveFileIndex(res.fileIndex); 
                             setSelectedUrl(res.url); 
-                            // 关键：同步搜索词到全局，让左侧树自动定位和展开
-                            useStore.getState().setSearchQuery(res.title);
+                            // 展开父级并清除搜索词以进入精确位置
+                            expandParents(res.fileIndex, res.url);
                             if (window.innerWidth < 768) useStore.getState().setMobileActivePane('content'); 
                           }} 
-                          className="p-2 rounded border bg-muted/30 hover:border-primary/30 cursor-pointer transition-all"
+                          className="p-2 rounded border bg-muted/30 hover:border-primary/30 cursor-pointer transition-all space-y-1.5"
                         >
-                          <div className="text-xs font-bold truncate">{res.title}</div>
-                          <div className="text-[10px] opacity-60 italic">"{res.reason}"</div>
+                          <div className="text-xs font-bold truncate text-foreground">{res.title}</div>
+                          <div className="flex flex-wrap items-center gap-1 text-[9px] uppercase font-bold opacity-50">
+                            <span className="bg-primary/10 text-primary px-1 rounded">{res.filename.replace('.md', '')}</span>
+                            {res.path && res.path !== 'Root' && (
+                              <>
+                                <ArrowLeftRight className="w-2 h-2 rotate-90" />
+                                <span className="truncate max-w-[150px]">{res.path}</span>
+                              </>
+                            )}
+                          </div>
+                          <div className="text-[10px] opacity-60 italic leading-tight">"{res.reason}"</div>
                         </div>
                       ))}
                     </div>

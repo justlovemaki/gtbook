@@ -491,3 +491,50 @@ export function moveItemInMarkdown(
 
   return lines.join('\n');
 }
+
+export interface LinkInfo {
+  title: string;
+  url: string;
+  folder?: string;
+  reason?: string;
+}
+
+export function flattenTree(items: (Bookmark | Directory)[], parentFolder = ''): LinkInfo[] {
+  const links: LinkInfo[] = [];
+  for (const item of items) {
+    if ('children' in item) {
+      const currentFolder = parentFolder ? `${parentFolder} > ${item.title}` : item.title;
+      links.push(...flattenTree(item.children, currentFolder));
+    } else {
+      links.push({
+        title: item.title,
+        url: item.url,
+        folder: parentFolder || 'root',
+        reason: item.reason
+      });
+    }
+  }
+  return links;
+}
+
+export function extractLinkInfos(text: string): LinkInfo[] {
+  const tree = parseMarkdown(text);
+  return flattenTree(tree);
+}
+
+export interface ComparisonResult {
+  added: LinkInfo[];
+  removed: LinkInfo[];
+}
+
+export function compareLinks(inputText: string, repoLinks: LinkInfo[]): ComparisonResult {
+  const inputLinks = extractLinkInfos(inputText);
+  
+  const inputUrls = new Set(inputLinks.map(l => l.url));
+  const repoUrls = new Set(repoLinks.map(l => l.url));
+
+  const added = inputLinks.filter(l => !repoUrls.has(l.url));
+  const removed = repoLinks.filter(l => !inputUrls.has(l.url));
+
+  return { added, removed };
+}

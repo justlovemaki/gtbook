@@ -131,7 +131,13 @@
     "batchImport": "Batch Import",
     "batchCount": "Found {{count}} bookmarks to import",
     "confirm": "Confirm",
-    "andMore": "... and {{count}} more"
+    "andMore": "... and {{count}} more",
+    "compareMode": "Compare",
+    "comparePlaceholder": "Paste Markdown to compare...",
+    "compareResult": "Comparison Result",
+    "addedLinks": "Added Links",
+    "removedLinks": "Removed Links",
+    "noChanges": "No changes found"
   },
   "content": {
     "selectBookmark": "Select a bookmark to read",

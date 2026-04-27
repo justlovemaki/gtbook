@@ -3,6 +3,7 @@ export interface Bookmark {
   title: string;
   url: string;
   level: number;
+  reason?: string;
 }
 
 export interface Directory {

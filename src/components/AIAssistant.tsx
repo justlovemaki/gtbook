@@ -19,13 +19,14 @@ export const AIAssistant: React.FC = () => {
   const [mode, setMode] = useState<AssistantMode>('organize');
   const [status, setStatus] = useState<'idle' | 'analyzing' | 'confirming' | 'success' | 'error'>('idle');
   const [suggestion, setSuggestion] = useState<{ file: string; dir: string; title: string; reason: string } | null>(null);
+  const [batchSuggestions, setBatchSuggestions] = useState<{ file: string; dir: string; title: string; reason: string; url?: string }[] | null>(null);
   const [searchResults, setSearchResults] = useState<{ title: string; url: string; fileIndex: number; reason: string }[]>([]);
   const [isMinimized, setIsMinimized] = useState(true);
 
   if (!config) return null;
 
-  const getAllDirPaths = (items: (Bookmark | Directory)[], parentPath: string = ''): string[] => {
-    let paths: string[] = [];
+  const getAllDirPaths = (items: (Bookmark | Directory)[], parentPath = ''): string[] => {
+    const paths: string[] = [];
     for (const item of items) {
       if ('children' in item) {
         const currentPath = parentPath ? `${parentPath} > ${item.title}` : item.title;
@@ -42,6 +43,22 @@ export const AIAssistant: React.FC = () => {
       alert(t('ai.connectGithub'));
       return;
     }
+
+    // Try to parse as JSON for batch import
+    try {
+      const trimmed = url.trim();
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed) && parsed.length > 0 && (parsed[0] as any).file) {
+          setBatchSuggestions(parsed as any[]);
+          setStatus('confirming');
+          return;
+        }
+      }
+    } catch (e) {
+      // Not a valid batch JSON, continue to single URL analysis
+    }
+
     setStatus('analyzing');
 
     try {
@@ -57,19 +74,19 @@ Within the file, find a directory or return "root".
 Context: ${JSON.stringify(fileContext, null, 2)}
 Return JSON: { "file": "filename", "dir": "dir title or root", "title": "page title", "reason": "why in ${t('ai.reasonLanguage')}" }`;
 
-      const baseUrl = (config.openaiBaseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
+      const baseUrl = (config.openaiBaseUrl ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.openaiKey}` },
         body: JSON.stringify({
-          model: config.openaiModel || "gpt-3.5-turbo",
+          model: config.openaiModel ?? "gpt-3.5-turbo",
           messages: [{ role: "user", content: prompt }],
           response_format: { type: "json_object" }
         })
       });
 
       const data = await response.json();
-      const rawContent = data.choices[0].message.content || '{}';
+      const rawContent = data.choices[0].message.content ?? '{}';
       setSuggestion(safeParseJSON(rawContent, null));
       setStatus('confirming');
     } catch (err) {
@@ -129,12 +146,12 @@ Return JSON format:
   ]
 }`;
 
-      const baseUrl = (config.openaiBaseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
+      const baseUrl = (config.openaiBaseUrl ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.openaiKey}` },
         body: JSON.stringify({
-          model: config.openaiModel || "gpt-3.5-turbo",
+          model: config.openaiModel ?? "gpt-3.5-turbo",
           messages: [
             { role: "system", content: "You are a professional assistant that returns ONLY JSON." },
             { role: "user", content: prompt }
@@ -146,7 +163,7 @@ Return JSON format:
       const data = await response.json();
       const aiResponse = safeParseJSON<{ results: any[] }>(data.choices[0].message.content, { results: [] });
       
-      const enrichedResults = (aiResponse.results || []).map((r: any) => {
+      const enrichedResults = (aiResponse.results ?? []).map((r: any) => {
         const original = bookmarkMap.get(r.id);
         return original ? { 
           title: original.title, 
@@ -156,15 +173,74 @@ Return JSON format:
         } : null;
       }).filter((item): item is { title: string; url: string; fileIndex: number; reason: string } => item !== null);
 
-      if (enrichedResults.length === 0) {
-        // 如果 ID 匹配失败（有时 AI 会幻觉 ID），尝试标题模糊匹配作为后备
-        console.warn("ID match failed, AI might have hallucinated IDs.");
-      }
-
       setSearchResults(enrichedResults);
       setStatus('confirming');
     } catch (err) {
       console.error("AI Search Error:", err);
+      setStatus('error');
+    }
+  };
+
+  const handleBatchConfirm = async () => {
+    if (!config || !batchSuggestions || !files.length) return;
+    setStatus('analyzing');
+    try {
+      const github = new GitHubService(config);
+      // Group items by file
+      const groups = batchSuggestions.reduce((acc, item) => {
+        if (!acc[item.file]) acc[item.file] = [];
+        acc[item.file].push(item);
+        return acc;
+      }, {} as Record<string, typeof batchSuggestions>);
+
+      let currentFiles = [...files];
+
+      for (const [filename, items] of Object.entries(groups)) {
+        let fileIndex = currentFiles.findIndex(f => f.filename === filename);
+        let targetFile: FavoriteFile;
+
+        if (fileIndex === -1) {
+          // Create file if it doesn't exist
+          targetFile = await github.createFile(filename);
+          // Wait a bit for GitHub to reflect the change
+          const freshFiles = await github.fetchFiles(true);
+          setFiles(freshFiles);
+          currentFiles = freshFiles;
+          fileIndex = currentFiles.findIndex(f => f.filename === filename);
+          targetFile = currentFiles[fileIndex];
+        } else {
+          targetFile = currentFiles[fileIndex];
+        }
+
+        const { content: currentRaw, sha: latestSha } = await github.getFileRawContent(targetFile.path);
+        let newRaw = currentRaw;
+        
+        for (const item of items) {
+          // If URL is missing, assume it's a GitHub repo from title
+          const itemUrl = item.url || (item.title.includes('/') && !item.title.includes(' ') ? `https://github.com/${item.title}` : item.title);
+          
+          // Ensure directory exists in markdown
+          const dirExists = new RegExp(`^((?:\\s*\\*+\\s*)+)\\[${item.dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]\\(dir\\)`, 'm').test(newRaw);
+          
+          if (!dirExists && item.dir !== 'root') {
+            const suffix = newRaw.endsWith('\n') ? '' : '\n';
+            newRaw += `${suffix}* [${item.dir}](dir)\n`;
+          }
+          
+          newRaw = insertLinkToMarkdown(newRaw, item.dir, item.title, itemUrl, item.reason);
+        }
+
+        const newSha = await github.updateFile({ ...targetFile, sha: latestSha }, newRaw);
+        currentFiles[fileIndex] = { ...targetFile, content: newRaw, sha: newSha, tree: parseMarkdown(newRaw) };
+      }
+
+      setFiles(currentFiles, true);
+      setStatus('success');
+      setUrl('');
+      setBatchSuggestions(null);
+      setTimeout(() => setStatus('idle'), 3000);
+    } catch (err) {
+      console.error("Batch Import Error:", err);
       setStatus('error');
     }
   };
@@ -225,13 +301,37 @@ Return JSON format:
               {mode === 'organize' ? (
                 status === 'confirming' ? (
                   <div className="space-y-4 text-xs">
-                    <div className="bg-muted/50 p-3 rounded border border-dashed space-y-1">
-                      <p><strong>{t('ai.aiTitle')}:</strong> {suggestion?.title}</p>
-                      <p><strong>{t('ai.file')}:</strong> {suggestion?.file}</p>
-                      <p><strong>{t('ai.path')}:</strong> {suggestion?.dir}</p>
-                      <p className="italic opacity-70">"{suggestion?.reason}"</p>
-                    </div>
-                    <div className="flex gap-2"><button onClick={() => setStatus('idle')} className="flex-1 py-1.5 border rounded">{t('common.cancel')}</button><button onClick={handleConfirm} className="flex-1 py-1.5 bg-primary text-primary-foreground rounded">{t('common.save')}</button></div>
+                    {batchSuggestions ? (
+                      <div className="space-y-2">
+                        <div className="bg-muted/50 p-3 rounded border border-dashed">
+                          <p className="font-bold mb-1 text-primary">{t('ai.batchImport')}</p>
+                          <p>{t('ai.batchCount', { count: batchSuggestions.length })}</p>
+                          <div className="mt-2 max-h-32 overflow-y-auto space-y-1 opacity-70">
+                            {batchSuggestions.slice(0, 5).map((s, i) => (
+                              <div key={i} className="truncate">• {s.title} ({s.file})</div>
+                            ))}
+                            {batchSuggestions.length > 5 && <div>{t('ai.andMore', { count: batchSuggestions.length - 5 })}</div>}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => { setStatus('idle'); setBatchSuggestions(null); }} className="flex-1 py-1.5 border rounded">{t('common.cancel')}</button>
+                          <button onClick={handleBatchConfirm} className="flex-1 py-1.5 bg-primary text-primary-foreground rounded">{t('ai.confirm')}</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="bg-muted/50 p-3 rounded border border-dashed space-y-1">
+                          <p><strong>{t('ai.aiTitle')}:</strong> {suggestion?.title}</p>
+                          <p><strong>{t('ai.file')}:</strong> {suggestion?.file}</p>
+                          <p><strong>{t('ai.path')}:</strong> {suggestion?.dir}</p>
+                          <p className="italic opacity-70">"{suggestion?.reason}"</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => setStatus('idle')} className="flex-1 py-1.5 border rounded">{t('common.cancel')}</button>
+                          <button onClick={handleConfirm} className="flex-1 py-1.5 bg-primary text-primary-foreground rounded">{t('common.save')}</button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ) : status === 'success' ? (
                   <div className="flex flex-col items-center py-4 text-green-600"><Check className="w-8 h-8 mb-2" /><span className="text-xs">{t('ai.success')}</span></div>

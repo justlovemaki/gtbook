@@ -10,7 +10,8 @@
     "delete": "Delete",
     "failed": "Failed",
     "success": "Success",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "confirm": "Confirm"
   },
   "app": {
     "title": "gtbook",
@@ -126,7 +127,11 @@
     "refactoring": "Refactoring structure...",
     "noSearchResult": "AI found no relevant bookmarks",
     "lossWarning": "Detected fewer bookmarks after AI refactor (from {{old}} to {{new}}). Data loss might have occurred. Continue?",
-    "truncated": "AI response was truncated. Refactor cancelled. Please try a smaller file or a more advanced model."
+    "truncated": "AI response was truncated. Refactor cancelled. Please try a smaller file or a more advanced model.",
+    "batchImport": "Batch Import",
+    "batchCount": "Found {{count}} bookmarks to import",
+    "confirm": "Confirm",
+    "andMore": "... and {{count}} more"
   },
   "content": {
     "selectBookmark": "Select a bookmark to read",

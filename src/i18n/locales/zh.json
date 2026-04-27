@@ -10,7 +10,8 @@
     "delete": "删除",
     "failed": "失败",
     "success": "成功",
-    "loading": "加载中..."
+    "loading": "加载中...",
+    "confirm": "确认"
   },
   "app": {
     "title": "gtbook",
@@ -126,7 +127,11 @@
     "refactoring": "正在重构结构...",
     "noSearchResult": "AI 未在收藏中找到匹配内容",
     "lossWarning": "AI 重构后检测到书签数量减少（从 {{old}} 减少到 {{new}}），可能存在数据丢失。是否继续？",
-    "truncated": "AI 响应被截断，重构操作已取消。请尝试减小文件大小或使用更高级的模型。"
+    "truncated": "AI 响应被截断，重构操作已取消。请尝试减小文件大小或使用更高级的模型。",
+    "batchImport": "批量导入",
+    "batchCount": "发现 {{count}} 个书签待导入",
+    "confirm": "确认",
+    "andMore": "... 以及另外 {{count}} 个"
   },
   "content": {
     "selectBookmark": "选择一个书签进行阅读",

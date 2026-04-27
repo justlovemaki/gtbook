@@ -8,10 +8,10 @@ export function parseMarkdown(text: string): (Bookmark | Directory)[] {
   ];
 
   for (const line of lines) {
-    const match = line.match(/^((?:\s*\*+\s*)+)\[(.*?)\]\((.*?)\)/);
+    const match = line.match(/^((?:\s*\*+\s*)+)\[(.*?)\]\((.*?)\)(?::\s*(.*))?/);
     if (!match) continue;
 
-    const [, markerGroup, title, content] = match;
+    const [, markerGroup, title, content, reason] = match;
     const level = (markerGroup.match(/\*/g) || []).length;
 
     while (stack.length > 1 && stack[stack.length - 1].level >= level) {
@@ -35,6 +35,7 @@ export function parseMarkdown(text: string): (Bookmark | Directory)[] {
         title,
         url: content,
         level,
+        reason: reason?.trim(),
       };
       parent.children.push(bookmark);
     }
@@ -47,15 +48,18 @@ export function insertLinkToMarkdown(
   content: string,
   targetDir: string,
   title: string,
-  url: string
+  url: string,
+  reason?: string
 ): string {
   const lines = content.split('\n');
   let insertIndex = -1;
   let targetLevel = 0;
 
+  const bookmarkLine = reason ? `[${title}](${url}): ${reason}` : `[${title}](${url})`;
+
   if (targetDir === 'root') {
     const suffix = content.endsWith('\n') ? '' : '\n';
-    return content + suffix + `* [${title}](${url})`;
+    return content + suffix + `* ${bookmarkLine}`;
   }
 
   for (let i = 0; i < lines.length; i++) {
@@ -88,7 +92,7 @@ export function insertLinkToMarkdown(
   }
 
   const stars = '* '.repeat(targetLevel + 1).trim();
-  lines.splice(i, 0, `${stars} [${title}](${url})`);
+  lines.splice(i, 0, `${stars} ${bookmarkLine}`);
 
   return lines.join('\n');
 }

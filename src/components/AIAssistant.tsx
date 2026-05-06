@@ -24,7 +24,6 @@ export const AIAssistant: React.FC = () => {
   const [comparison, setComparison] = useState<ComparisonResult | null>(null);
   const [searchResults, setSearchResults] = useState<{ title: string; url: string; fileIndex: number; reason: string; filename: string; path: string }[]>([]);
   const [isMinimized, setIsMinimized] = useState(true);
-  const [targetFileIndex, setTargetFileIndex] = useState<number>(0);
 
   if (!config) return null;
 
@@ -432,39 +431,6 @@ Return JSON format:
                       )}
                     </div>
                     <button onClick={() => setStatus('idle')} className="w-full py-1.5 border rounded">{t('common.close')}</button>
-                    {comparison.added.length > 0 && (
-                      <div className="space-y-2 pt-2 border-t">
-                        <div className="flex flex-col gap-1">
-                          <label className="text-[9px] font-bold text-muted-foreground uppercase">{t('ai.file')} (Import to)</label>
-                          <select 
-                            value={targetFileIndex} 
-                            onChange={(e) => setTargetFileIndex(parseInt(e.target.value))}
-                            className="w-full px-2 py-1 bg-muted border rounded text-[10px] outline-none"
-                          >
-                            {files.map((f, i) => (
-                              <option key={f.path} value={i}>{f.filename}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <button 
-                          onClick={() => {
-                            const suggestions = comparison.added.map(l => ({
-                              file: files[targetFileIndex].filename,
-                              dir: l.folder === 'root' ? 'root' : l.folder?.split(' > ').pop() || 'root',
-                              title: l.title,
-                              url: l.url,
-                              reason: l.reason || ''
-                            }));
-                            setBatchSuggestions(suggestions);
-                            setStatus('confirming');
-                          }} 
-                          className="w-full py-1.5 bg-primary text-primary-foreground rounded flex items-center justify-center gap-2 font-bold"
-                        >
-                          <PlusCircle className="w-3.5 h-3.5" />
-                          {t('ai.batchImport')}
-                        </button>
-                      </div>
-                    )}
                   </div>
                 ) : (
                   <div className="space-y-3">
